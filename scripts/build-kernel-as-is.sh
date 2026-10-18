@@ -3,12 +3,15 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The checkout, downloads and build output: tens of GB, so it can live
+# outside the repository (BISCUIT_WORKSPACE).
+WORKSPACE_DIR="${BISCUIT_WORKSPACE:-$REPO_ROOT/workspace}"
 RELEASE="6.5.7.1"
 SOURCE_URL="https://fireos-audio-src.s3.amazonaws.com/dMUQiRDxI3hFuRDaF0WTumrp71/Echo_Dot_src-6.5.7.1-20251024.tar.bz2"
 SOURCE_SHA256="2f6b7eed8c09cecf7633f01909c6a4085bef691c29ed0d106c75e7b48c7b4721"
-ARCHIVE="$REPO_ROOT/workspace/downloads/$(basename "$SOURCE_URL")"
-SOURCE_DIR="$REPO_ROOT/workspace/upstream/amazon-echo-dot-$RELEASE"
-OUT_DIR="$REPO_ROOT/workspace/out/fireos-$RELEASE-kernel-as-is"
+ARCHIVE="$WORKSPACE_DIR/downloads/$(basename "$SOURCE_URL")"
+SOURCE_DIR="$WORKSPACE_DIR/upstream/amazon-echo-dot-$RELEASE"
+OUT_DIR="$WORKSPACE_DIR/out/fireos-$RELEASE-kernel-as-is"
 IMAGE="biscuit-kernel-builder:latest"
 CONTAINER="fireos6-biscuit-kernel-as-is"
 

@@ -3,7 +3,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CM14="${CM14:-$REPO_ROOT/workspace/cm14.1}"
+# The checkout, downloads and build output: tens of GB, so it can live
+# outside the repository (BISCUIT_WORKSPACE).
+WORKSPACE_DIR="${BISCUIT_WORKSPACE:-$REPO_ROOT/workspace}"
+CM14="${CM14:-$WORKSPACE_DIR/cm14.1}"
 LOCAL_MANIFEST="$REPO_ROOT/manifest/local.xml"
 LOCK="$REPO_ROOT/manifest/lock.xml"
 REPO_BIN="${REPO_BIN:-}"
@@ -13,7 +16,7 @@ WEBVIEW_APK_SHA256="feeedd44677f5643e2de2de4a44061f7bd31a662e78909d6e052b4fe1468
 WEBVIEW_APK_SIZE=83580708
 
 [[ -f "$LOCAL_MANIFEST" ]] || { echo "ERROR: missing $LOCAL_MANIFEST" >&2; exit 1; }
-mkdir -p "$CM14" "$REPO_ROOT/workspace/bin"
+mkdir -p "$CM14" "$WORKSPACE_DIR/bin"
 
 command -v git-lfs >/dev/null 2>&1 || {
   echo "ERROR: CM14.1's WebView prebuilt requires git-lfs." >&2
@@ -39,7 +42,7 @@ if [[ -z "$REPO_BIN" ]]; then
   if command -v repo >/dev/null 2>&1; then
     REPO_BIN=repo
   else
-    REPO_BIN="$REPO_ROOT/workspace/bin/repo"
+    REPO_BIN="$WORKSPACE_DIR/bin/repo"
     if [[ ! -x "$REPO_BIN" ]]; then
       curl -L --fail -o "$REPO_BIN" https://storage.googleapis.com/git-repo-downloads/repo
       chmod +x "$REPO_BIN"

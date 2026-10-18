@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CM14="${CM14:-$ROOT/workspace/cm14.1}"
+CM14="${CM14:-${BISCUIT_WORKSPACE:-$ROOT/workspace}/cm14.1}"
 CORE="$CM14/system/core"
 PATCH="$ROOT/patches/full/002-amonet2-bcb-slotselect.patch"
 MINIMAL_PATCH="$ROOT/patches/minimal/001-amonet2-bcb-slotselect.patch"

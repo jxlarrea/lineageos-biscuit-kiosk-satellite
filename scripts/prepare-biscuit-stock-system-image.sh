@@ -3,9 +3,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The checkout, downloads and build output: tens of GB, so it can live
+# outside the repository (BISCUIT_WORKSPACE).
+WORKSPACE_DIR="${BISCUIT_WORKSPACE:-$REPO_ROOT/workspace}"
 STOCK_OTA_URL="${BISCUIT_STOCK_OTA_URL:-https://d1s31zyz7dcc2d.cloudfront.net/8811a0fc982bf3331dc54f5aec45d936/update-kindle-full_biscuit-272.6.4.1_user_641575220.bin}"
-STOCK_OTA_BIN="${BISCUIT_STOCK_OTA_BIN:-$REPO_ROOT/workspace/downloads/$(basename "$STOCK_OTA_URL")}"
-OUT_DIR="${BISCUIT_STOCK_OTA_EXTRACT_DIR:-$REPO_ROOT/workspace/extracted/biscuit-stock-272.6.4.1}"
+STOCK_OTA_BIN="${BISCUIT_STOCK_OTA_BIN:-$WORKSPACE_DIR/downloads/$(basename "$STOCK_OTA_URL")}"
+OUT_DIR="${BISCUIT_STOCK_OTA_EXTRACT_DIR:-$WORKSPACE_DIR/extracted/biscuit-stock-272.6.4.1}"
 SYSTEM_NEW_DAT="$OUT_DIR/system.new.dat"
 SYSTEM_TRANSFER_LIST="$OUT_DIR/system.transfer.list"
 SYSTEM_IMG="${BISCUIT_SYSTEM_IMG:-$OUT_DIR/system.img}"

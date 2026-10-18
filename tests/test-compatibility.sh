@@ -11,7 +11,7 @@ BUILD="$ROOT/scripts/build.sh"
 EXTRACTOR="$ROOT/scripts/extract-fireos6-blobs.sh"
 DEVICE="$ROOT/device/amazon/biscuit"
 VENDOR="$ROOT/vendor/amazon/mt8163-common"
-WORKSPACE="$ROOT/workspace/cm14.1"
+WORKSPACE="${BISCUIT_WORKSPACE:-$ROOT/workspace}/cm14.1"
 
 [[ -d "$DEVICE" ]]
 [[ -d "$VENDOR" ]]
@@ -94,8 +94,8 @@ grep -Fqx '"$REPO_ROOT/scripts/apply-patches.sh" "$KERNEL_DEST" 4 "$REPO_ROOT/pa
 grep -Fqx 'LUNCH_TARGET="${LUNCH_TARGET:-cm_biscuit-userdebug}"' "$BUILD"
 grep -Fqx '  biscuit_minimal-userdebug)' "$BUILD"
 grep -Fqx 'PATCH_PROFILE="$PATCH_PROFILE" "$REPO_ROOT/scripts/stage-tree.sh"' "$BUILD"
-grep -Fqx 'CM14="${CM14:-$REPO_ROOT/workspace/cm14.1}"' "$STAGE"
-grep -Fqx 'CM14="${CM14:-$REPO_ROOT/workspace/cm14.1}"' "$BUILD"
+grep -Fqx 'CM14="${CM14:-$WORKSPACE_DIR/cm14.1}"' "$STAGE"
+grep -Fqx 'CM14="${CM14:-$WORKSPACE_DIR/cm14.1}"' "$BUILD"
 if [[ -f "$WORKSPACE/system/core/liblog/logger_write.c" ]]; then
   count="$(grep -c 'LIBLOG_ABI_PUBLIC int lab126_log_write' "$WORKSPACE/system/core/liblog/logger_write.c" || true)"
   [[ "$count" == 0 || "$count" == 1 ]]

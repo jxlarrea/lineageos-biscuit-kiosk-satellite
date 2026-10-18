@@ -5,14 +5,17 @@ set -euo pipefail
 IMAGE="cm14.1-ubuntu20:latest"
 CONTAINER="cm14.1-biscuit-build"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CM14="${CM14:-$REPO_ROOT/workspace/cm14.1}"
+# The checkout, downloads and build output: tens of GB, so it can live
+# outside the repository (BISCUIT_WORKSPACE).
+WORKSPACE_DIR="${BISCUIT_WORKSPACE:-$REPO_ROOT/workspace}"
+CM14="${CM14:-$WORKSPACE_DIR/cm14.1}"
 OUT_DIR="$CM14/out-docker"
 KERNEL_SOURCE="$CM14/kernel/amazon/biscuit"
 KERNEL_SUPPORT="$CM14/device/amazon/biscuit/kernel-build-support"
 KERNEL_OUT="$OUT_DIR/target/product/biscuit/obj/KERNEL_OBJ"
 BUILD_TARGET="${BUILD_TARGET:-otapackage}"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
-CCACHE_DIR="${CCACHE_DIR:-$REPO_ROOT/workspace/ccache}"
+CCACHE_DIR="${CCACHE_DIR:-$WORKSPACE_DIR/ccache}"
 CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-50G}"
 LUNCH_TARGET="${LUNCH_TARGET:-cm_biscuit-userdebug}"
 
@@ -146,6 +149,7 @@ docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run -d \
   --name "$CONTAINER" \
   -v "$REPO_ROOT:$REPO_ROOT" \
+  -v "$WORKSPACE_DIR:$WORKSPACE_DIR" \
   -w "$CM14" \
   "$IMAGE" \
   bash -lc "

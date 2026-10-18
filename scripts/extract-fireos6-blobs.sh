@@ -3,14 +3,17 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CM14="${CM14:-$REPO_ROOT/workspace/cm14.1}"
+# The checkout, downloads and build output: tens of GB, so it can live
+# outside the repository (BISCUIT_WORKSPACE).
+WORKSPACE_DIR="${BISCUIT_WORKSPACE:-$REPO_ROOT/workspace}"
+CM14="${CM14:-$WORKSPACE_DIR/cm14.1}"
 OTA_URL="https://d1s31zyz7dcc2d.cloudfront.net/2026/8/3/f49aaff7-dd63-4d9c-9e9a-c17498267de5/update-kindle-biscuit_puffin-NS6574_user_7623_0013121734532.bin"
 OTA_SHA256="64ab6d2dd85f8093abdd62c275d229c7e9fdd68e4d46892b48bdbd1d100d46d8"
-OTA="$REPO_ROOT/workspace/downloads/$(basename "$OTA_URL")"
-SYSTEM_IMG="$REPO_ROOT/workspace/extracted/biscuit-fireos-6.5.7.4/system.img"
+OTA="$WORKSPACE_DIR/downloads/$(basename "$OTA_URL")"
+SYSTEM_IMG="$WORKSPACE_DIR/extracted/biscuit-fireos-6.5.7.4/system.img"
 SYSTEM_SHA256="eccfa850c3009d5454f69a411c0b757be642059b3224cae8fc941fa0dd22c570"
 MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/fireos6-audio-files.txt"
-STOCK_HWC_SYSTEM_IMG="$REPO_ROOT/workspace/extracted/biscuit-stock-272.6.4.1/system.img"
+STOCK_HWC_SYSTEM_IMG="$WORKSPACE_DIR/extracted/biscuit-stock-272.6.4.1/system.img"
 STOCK_HWC_SYSTEM_SHA256="bd928aa5087b8d8c40095c784dfc159cc2555ed4130d617b258bfd0a06659f7c"
 STOCK_HWC_OTA_SHA256="28bc050e4a2af79c9ca66e251de7bf04c42ce8d7934dd97673d3d04f5fa0917b"
 HWC_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-headless-hwc-files.txt"
@@ -18,8 +21,8 @@ RADIO_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-radio-files.txt"
 BT_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-bluetooth-files.txt"
 COMMON_OUT="$CM14/vendor/amazon/mt8163-common"
 PROP="$COMMON_OUT/proprietary"
-mkdir -p "$REPO_ROOT/workspace/tmp"
-TMP="$(mktemp -d "$REPO_ROOT/workspace/tmp/cm14-fireos6-audio.XXXXXXXXXX")"
+mkdir -p "$WORKSPACE_DIR/tmp"
+TMP="$(mktemp -d "$WORKSPACE_DIR/tmp/cm14-fireos6-audio.XXXXXXXXXX")"
 STAGED_PROP="$TMP/proprietary"
 VENDOR_MK_TMP="$TMP/mt8163-common-vendor.mk"
 MINIMAL_VENDOR_MK_TMP="$TMP/mt8163-common-minimal-vendor.mk"
@@ -34,7 +37,7 @@ done
 [[ -f "$RADIO_MANIFEST" ]] || { echo "ERROR: missing Biscuit radio manifest: $RADIO_MANIFEST" >&2; exit 1; }
 [[ -f "$BT_MANIFEST" ]] || { echo "ERROR: missing Biscuit Bluetooth manifest: $BT_MANIFEST" >&2; exit 1; }
 
-mkdir -p "$(dirname "$OTA")" "$(dirname "$SYSTEM_IMG")" "$REPO_ROOT/workspace/tmp"
+mkdir -p "$(dirname "$OTA")" "$(dirname "$SYSTEM_IMG")" "$WORKSPACE_DIR/tmp"
 if [[ ! -f "$OTA" ]]; then
   curl --fail --location --progress-bar -o "$OTA" "$OTA_URL"
 fi

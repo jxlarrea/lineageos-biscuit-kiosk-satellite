@@ -31,6 +31,18 @@ docker image inspect biscuit-kernel-builder:latest >/dev/null 2>&1 || \
     -f docker/biscuit-kernel-builder.Dockerfile docker/
 ```
 
+## Workspace location
+
+The checkout, downloads, extracted Fire OS images, build output and ccache live in `workspace/` inside the repository by default, and take tens of GB. To keep them elsewhere, such as a larger disk, set `BISCUIT_WORKSPACE` for every command:
+
+```sh
+export BISCUIT_WORKSPACE=/mnt/dev/amazon_device_biscuit/workspace
+scripts/sync.sh
+make full
+```
+
+The build container mounts that path too.
+
 ## One-time source synchronization
 
 ```sh

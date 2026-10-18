@@ -3,14 +3,17 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CM14="${CM14:-$REPO_ROOT/workspace/cm14.1}"
+# The checkout, downloads and build output: tens of GB, so it can live
+# outside the repository (BISCUIT_WORKSPACE).
+WORKSPACE_DIR="${BISCUIT_WORKSPACE:-$REPO_ROOT/workspace}"
+CM14="${CM14:-$WORKSPACE_DIR/cm14.1}"
 PATCH_PROFILE="${PATCH_PROFILE:-full}"
 FIREOS_RELEASE="6.5.7.1"
 FIREOS_URL="https://fireos-audio-src.s3.amazonaws.com/dMUQiRDxI3hFuRDaF0WTumrp71/Echo_Dot_src-6.5.7.1-20251024.tar.bz2"
 FIREOS_SHA256="2f6b7eed8c09cecf7633f01909c6a4085bef691c29ed0d106c75e7b48c7b4721"
 VERITY_KEY_SHA256="feb0c591f259639dfbdc58a82aee2c64f55c039f3b764aae91f6d3d14deec5b4"
-ARCHIVE="$REPO_ROOT/workspace/downloads/$(basename "$FIREOS_URL")"
-SOURCE_DIR="$REPO_ROOT/workspace/upstream/amazon-echo-dot-$FIREOS_RELEASE"
+ARCHIVE="$WORKSPACE_DIR/downloads/$(basename "$FIREOS_URL")"
+SOURCE_DIR="$WORKSPACE_DIR/upstream/amazon-echo-dot-$FIREOS_RELEASE"
 KERNEL_ARCHIVE_PATH="kernel/mediatek/mt8163/3.18_hl"
 KERNEL_DEST="$CM14/kernel/amazon/biscuit"
 KERNEL_SUPPORT="$CM14/device/amazon/biscuit/kernel-build-support"
