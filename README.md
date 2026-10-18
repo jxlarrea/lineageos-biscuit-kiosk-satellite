@@ -1,130 +1,95 @@
-# CM14.1 for Amazon Biscuit (Echo Dot 2nd gen)
+# Kiosk Satellite Edition for the Echo Dot (2nd Gen)
 
-> [!WARNING]
-> **Amonet Biscuit v2.0.0 is required to install either image on a Biscuit.** These OTAs target its TWRP 3.7.0_9-0 and native A/B partition contract. Do not use stock recovery, stock fastboot, Amonet v1 instructions, or old `boot_a_x` paths.
->
-> Amonet v2 uses a Preloader exploit, removes the old `lk-payload`/GPT-remapping design, supports Fire OS 6, and drops Fire OS 5. Its own update changes early boot components and must never be interrupted; a normal CM14 OTA must write only TWRP's `/dev/block/current-system` and `/dev/block/current-boot` aliases. A/B ROM installation requires the documented two-install recovery procedure when populating both slots. Holding only **MUTE** while connecting power with USB attached enters v2 Preloader USBDL recovery; v2 intentionally removes stock non-hacked fastboot.
->
-> Read the [upstream Amonet v2 update announcement](https://xdaforums.com/t/unlock-root-twrp-unbrick-amazon-echo-dot-2nd-gen-2016-biscuit.4761416/page-12#post-90734139) and this repository's [Amonet 2 notes](docs/amonet-biscuit-unlock.md) before installing or updating anything.
+A LineageOS 14.1 (Android 7.1.2) image for the 2nd generation Echo Dot (`biscuit`), tuned to run [Kiosk Satellite](https://github.com/jxlarrea/kiosk-satellite) as a voice satellite, intercom and speaker for Home Assistant. It is built on [hkfuertes' CM14.1 port](https://github.com/hkfuertes/amazon_device_biscuit) and made for this one job, so it leaves out the launcher, the screen apps and telephony.
 
-LineageOS/CM14.1 port for Amazon Biscuit with reproducible inputs and a disposable `workspace/`.
+## What it improves over the upstream port
 
-This repository builds two images:
+- **Hears you over loud music.** The Dot has seven microphones, but Android only got one of them. The image reads all seven and removes the speaker's sound from them while music plays: 13 to 17 dB less music, with your voice nearly untouched. The wake word works with music at 100% volume, where it used to fail from about 75%.
+- **A louder microphone.** The microphone preamp goes from 20 dB to 36 dB. Speech used to come in about 20 dB too quiet, and intercom calls from the Dot were barely audible.
+- **Less CPU at idle.** SurfaceFlinger used about 5% of a core retrying a framebuffer the Dot does not have, logging about 110 lines a second as it did. It now stays under 1%. The audio driver's "asp Pipeline doesn't exist" error, logged about 75 times a second during playback, is gone too. The display runs at 1 fps instead of 60, and there is no boot animation.
+- **More free memory.** SystemUI (29 MB), the phone process and its providers (26 MB), LiveDisplay and nearly 30 unused apps and services are left out. Swap on zram (256 MB) now works: upstream asked for more swap than the Dot has RAM, with a compression method its kernel lacks, so it never started. Apps get the standard Dalvik heap settings for 512 MB devices instead of a 16 MB limit. With Kiosk Satellite running, about 225 MB of the Dot's 480 MB stays free.
+- **More disk space.** The system partition holds 421 MB instead of 456 MB, and about 990 MB of the data partition is free after setup.
+- **Steadier Wi-Fi between kiosks.** Wi-Fi power saving is off. With it on, about one broadcast in five never arrived, and those broadcasts are how kiosks agree on which one answers a wake word.
+- **A steady light ring and a clean speaker.** The light ring no longer strobes while Kiosk Satellite animates it, and it goes back to Kiosk Satellite's colors after the volume overlay. The speaker no longer crackles on the first playback after boot.
+- **Kiosk Satellite installs itself.** On first boot the Dot downloads the latest Kiosk Satellite release, installs it, gives it every permission and makes it the device owner, so its updates install without a confirmation. No adb grants needed.
+- **The Action button as a broadcast.** The Action button reaches apps as a broadcast, so newer Kiosk Satellite versions do not need an accessibility service to hear it.
 
-| Product | Build command | Purpose |
-| --- | --- | --- |
-| `cm_biscuit-userdebug` | `make full` | Full Android/CM14.1 for Biscuit: framework, Wi-Fi, Bluetooth A2DP sink, LED/buttons, microphone capture/mute, and framework audio. |
-| `biscuit_minimal-userdebug` | `make minimal` | Framework-free, Android-shaped userspace: root ADB, Wi-Fi provisioning, DHCP/DNS, raw hardware tools, and a replaceable `ledcontroller` slot. It contains no APKs or `/system/framework` files. |
+See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change and how it was measured.
 
-> Build commands only produce artifacts; they do not flash a device. Read [the Amonet 2 notes](docs/amonet-biscuit-unlock.md) before any installation.
+## Before you start
 
-## Build guide
+- **An unlocked Dot with TWRP.** The image needs amonet v2.0.0 and its TWRP 3.7.0_9-0. Follow [Unlocking the Echo Dot](docs/unlocking.md), then [Getting into TWRP](docs/twrp.md).
+- **adb** on your computer and a micro USB cable that carries data.
+- **Your Wi-Fi name and password.**
 
-See **[Building the CM14.1 images](docs/building-cm14.1-images.md)** for prerequisites, both build flows, profile switching, artifacts, validation, and an explanation of every product and kernel patch.
+## Installing
 
-## Layout
+1. Download the `.zip` file from the [latest release](https://github.com/jxlarrea/amazon_device_biscuit/releases/latest).
+2. Start TWRP:
 
-```txt
-manifest/   # pinned CM14.1 repo manifests
-patches/    # ordered full, minimal, and kernel patch series
-device/     # tracked Biscuit device overlay
-vendor/     # tracked proprietary-blob manifests and generated makefile template
-docker/     # build images
-scripts/    # sync, stage, build, extraction, and diagnostics
-docs/       # notes, source list, and validation guides
-workspace/  # ignored: downloads, CM14.1 checkout, extracted blobs, outputs, ccache
-```
+   ```sh
+   adb reboot recovery
+   adb wait-for-recovery
+   ```
 
-The active source layout is flat. `workspace/cm14.1` is only the external LineageOS checkout and is regenerated by tracked scripts.
+3. Erase the Dot and install the image. Replace `<image>.zip` with the file you downloaded:
 
-## Reproducible inputs
+   ```sh
+   adb shell twrp wipe cache
+   adb shell twrp wipe data
+   adb push <image>.zip /sdcard/update.zip
+   adb shell twrp install /sdcard/update.zip
+   ```
 
-```txt
-workspace/cm14.1
-  <- scripts/sync.sh
-  <- manifest/local.xml or manifest/lock.xml
+4. Install it into the Dot's second slot too, so it always has a working copy to fall back to. `bcbtool get_active` prints `a` or `b`. Switch to the other one:
 
-workspace/upstream/amazon-echo-dot-6.5.7.1
-  <- scripts/stage-tree.sh
-  <- verified Fire OS 6.5.7.1 Echo Dot source archive
+   ```sh
+   adb shell bcbtool get_active
+   adb shell bcbtool set_active b
+   adb reboot recovery
+   adb wait-for-recovery
+   adb shell twrp install /sdcard/update.zip
+   adb shell rm /sdcard/update.zip
+   adb reboot
+   ```
 
-workspace/extracted/biscuit-fireos-6.5.7.4/system.img
-  <- scripts/extract-fireos6-payload.py
-  <- verified Fire OS 6.5.7.4 Biscuit/Puffin OTA
+   If `get_active` printed `b`, use `set_active a` instead.
 
-workspace/extracted/biscuit-stock-272.6.4.1/system.img
-  <- scripts/prepare-biscuit-stock-system-image.sh
-  <- verified stock Biscuit OTA used for the headless HWC blob
-```
+The first boot takes about a minute and a half. To update the image later, follow the same steps but skip `twrp wipe data`, which keeps Kiosk Satellite and its settings.
 
-See [docs/sources.md](docs/sources.md) for URLs, hashes, and policy.
+## After installing
 
-## Quick build
+1. **Join Wi-Fi.** The second command shows the Dot's IP address:
 
-Build images use Docker. Create them once if absent:
+   ```sh
+   adb shell biscuit_service wifi connect '<ssid>' '<password>'
+   adb shell ip -4 addr show wlan0
+   ```
 
-```sh
-docker image inspect cm14.1-ubuntu20:latest >/dev/null 2>&1 || \
-  docker build -t cm14.1-ubuntu20:latest -f docker/cm14.1-ubuntu20.Dockerfile docker/
+2. **Bluetooth** is on, for the Dot's Bluetooth speaker mode and Kiosk Satellite's Bluetooth proxy. If you are not using either, turn it off to save 15 to 20 MB of RAM:
 
-docker image inspect biscuit-kernel-builder:latest >/dev/null 2>&1 || \
-  docker build -t biscuit-kernel-builder:latest -f docker/biscuit-kernel-builder.Dockerfile docker/
-```
+   ```sh
+   adb shell biscuit_service bt off
+   ```
 
-Sync the external tree, then choose exactly one product:
+3. **Wait for Kiosk Satellite.** Once the Dot is on Wi-Fi, it downloads and installs Kiosk Satellite by itself. Follow along with:
 
-```sh
-scripts/sync.sh
-make full       # full cm_biscuit-userdebug image
-# or
-make minimal    # framework-free biscuit_minimal-userdebug image
+   ```sh
+   adb logcat -s ks-install
+   ```
 
-docker logs -f cm14.1-biscuit-build
-```
+   It prints `downloading`, `installed Kiosk Satellite` and `Kiosk Satellite is the device owner`, then `rebooting once so Android starts the button service`. This takes a couple of minutes, and the Dot restarts once at the end.
 
-`make full` selects `patches/full/`; `make minimal` selects `patches/minimal/` and clears the Biscuit product output to prevent stale full-product files. Both apply `patches/kernel/` and write output below:
+4. **Set up Kiosk Satellite.** Open `http://<dot ip>:2324` in a browser. The setup wizard asks for an admin password, your Home Assistant connection and the wake word. Then add the Dot in Home Assistant under **Settings > Devices & services**, where it shows up as discovered. The [Echo Dot guide](https://github.com/jxlarrea/kiosk-satellite/blob/main/docs/echo-dot.md) covers the buttons, the light ring and everything else Kiosk Satellite does on the Dot.
 
-```txt
-workspace/cm14.1/out-docker/target/product/biscuit/
-```
+[Device commands](docs/device-commands.md) lists what else you can control from `adb shell`.
 
-## Runtime helpers
+## Building
 
-### Full image only
+See [Building the CM14.1 images](docs/building-cm14.1-images.md). Builds run in Docker and keep their large checkout in `workspace/`, or wherever `BISCUIT_WORKSPACE` points.
 
-`cm_biscuit-userdebug` includes `/system/bin/biscuit_service`:
+## Thanks
 
-```sh
-adb shell biscuit_service wifi on
-adb shell biscuit_service wifi connect '<ssid>' '<psk>'
-adb shell biscuit_service wifi off
-adb shell biscuit_service volume up
-adb shell biscuit_service volume down
-adb shell biscuit_service volume set '<0..max>'
-adb shell biscuit_service mute on|off|toggle
-adb shell biscuit_service mic mute|unmute|toggle
-adb shell biscuit_service countdown set '<remaining-ms>' '<total-ms>'
-adb shell biscuit_service countdown clear
-adb shell biscuit_service bt pair
-adb shell biscuit_service bt off
-```
-
-### Minimal image only
-
-`biscuit_minimal-userdebug` intentionally has no Java service or Bluetooth framework. It includes framework-free Wi-Fi provisioning and diagnostics:
-
-```sh
-adb shell wpa_connect '<ssid>' '<8-to-63-character passphrase-or-64-hex-psk>'
-adb shell ping -c 2 google.es
-adb shell ip addr show wlan0
-```
-
-Do not print Wi-Fi PSKs in logs or summaries.
-
-## Safety
-
-- Amonet Biscuit v2.0.0/TWRP 3.7.0_9-0 is required for ROM installation; read the [upstream v2 announcement](https://xdaforums.com/t/unlock-root-twrp-unbrick-amazon-echo-dot-2nd-gen-2016-biscuit.4761416/page-12#post-90734139) and [docs/amonet-biscuit-unlock.md](docs/amonet-biscuit-unlock.md).
-- Never run `adb shell dd of=/dev/block/...` or `adb exec-in dd of=/dev/block/...`.
-- Do not use stock fastboot for ROM images.
-- Do not touch GPT, preloader, LK, TZ, recovery, userdata, cache, persist, or misc unless explicitly requested.
-- Inspect every generated updater before flashing. A valid custom OTA writes only `/dev/block/current-system` and `/dev/block/current-boot` and has no destructive wipe command.
+- [hkfuertes](https://github.com/hkfuertes), for the [CM14.1 port](https://github.com/hkfuertes/amazon_device_biscuit) this image is built on: the device tree, the kernel, the audio driver wrapper, the light ring service and the build system.
+- [meiser79](https://github.com/meiser79), for the speaker amplifier sequencing that ends the first-playback crackle and the TSL2540 light sensor fallback, both from their LineageOS ports.
+- xyz, k4y0z and Rortiz2 for amonet and its Echo Dot port, and [bboe](https://github.com/bboe) for [firebreak](https://github.com/bboe/firebreak).
