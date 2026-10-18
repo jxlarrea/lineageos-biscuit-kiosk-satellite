@@ -41,4 +41,30 @@ LOCAL_OVERRIDES_PACKAGES := \
     Updater \
     WallpaperCropper \
     WallpaperPicker
+# Kiosk Satellite Edition: services and apps a headless voice satellite never
+# uses. The running ones cost 5 to 15 MB each on a 512 MB device.
+LOCAL_OVERRIDES_PACKAGES += \
+    BackupRestoreConfirmation \
+    BookmarkProvider \
+    CalendarProvider \
+    CMAudioService \
+    Contacts \
+    CtsShimPrebuilt \
+    CtsShimPrivPrebuilt \
+    DocumentsUI \
+    DownloadProviderUi \
+    EasterEgg \
+    HTMLViewer \
+    MtpDocumentsProvider \
+    OneTimeInitializer \
+    perfprofd \
+    PicoTts \
+    PrintRecommendationService \
+    Profiles \
+    SharedStorageBackup \
+    StatementService \
+    WallpaperBackup \
+    WAPPushManager \
+    WeatherManagerService \
+    WeatherProvider
 include $(BUILD_PACKAGE)
