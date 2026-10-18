@@ -13,6 +13,16 @@ service audio_init /system/bin/sh /system/etc/audio_init.sh
 
 on property:sys.boot_completed=1
     start biscuit-ledd
+    start ks_install
+
+# Kiosk Satellite Edition: installs Kiosk Satellite on first boot and keeps its
+# grants in place. setprop persist.biscuit.ks_install 0 turns it off.
+service ks_install /system/bin/sh /system/etc/ks-install.sh
+    class late_start
+    user root
+    group root
+    disabled
+    oneshot
 
 service biscuit-ledd /system/bin/biscuit-ledd
     class main
