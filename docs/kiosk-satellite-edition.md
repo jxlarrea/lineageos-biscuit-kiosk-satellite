@@ -30,6 +30,7 @@ A CM14.1 Biscuit build tuned for Kiosk Satellite running headless: a voice satel
 | No boot animation | `device.mk` | It crashed dividing by zero on the 1x1 display. Boot completes in under a minute without it. |
 | Kernel command line without `initcall_debug` and with `loglevel=4` | `patches/kernel/020` | Less kernel logging. |
 | perfprofd stopped after boot | `init.device.rc` | The profiling daemon only collects for Google's internal builds. |
+| The audio HAL's "asp Pipeline doesn't exist" error dropped in liblog | `patches/full/034` | The HAL calls Amazon's audio processor for every playback buffer, and the processor never starts on this build. It logged about 75 lines a second while anything played. |
 
 ### Memory
 
@@ -61,13 +62,10 @@ A CM14.1 Biscuit build tuned for Kiosk Satellite running headless: a voice satel
 
 Kiosk Satellite itself used 1.7% of one core idle, measured per thread over a minute.
 
-## Still open
+## Kept as upstream ships it
 
-| Change | Why |
-| --- | --- |
-| Speaker distortion above 55% media volume | Find where the output clips and set the mixer so 100% stays clean. Needs listening tests. |
-| Silence the audio HAL's "asp Pipeline doesn't exist" spam | It logs for every playback buffer while audio plays. Needs a shim in the HAL's log path. |
-| Network adb | Upstream turns it on, on port 5555 with no authentication. Kept for now. |
+- Network adb on port 5555 with no authentication: a headless device is maintained over the network.
+- Speaker output above 55% media volume: no audible distortion in listening tests.
 
 ## Tried and dropped
 

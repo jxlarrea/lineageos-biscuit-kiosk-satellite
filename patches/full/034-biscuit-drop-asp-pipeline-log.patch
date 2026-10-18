@@ -1,0 +1,17 @@
+--- a/system/core/liblog/logger_write.c
++++ b/system/core/liblog/logger_write.c
+@@ -406,6 +406,14 @@
+     if (!tag)
+         tag = "";
+ 
++    // Biscuit: the Amazon audio HAL calls Amazon's audio processor for every
++    // playback buffer, and the processor never starts on this build, so it
++    // logs this error about 75 times a second while anything plays.
++    if (tag[0] == 'A' && msg && !strcmp(tag, "AudioALSAPlaybackHandlerNormal") &&
++            strstr(msg, "asp Pipeline doesn't exist")) {
++        return 1;
++    }
++
+     /* XXX: This needs to go! */
+     if ((bufID != LOG_ID_RADIO) &&
+          (!strcmp(tag, "HTC_RIL") ||
