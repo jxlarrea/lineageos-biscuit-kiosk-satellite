@@ -154,6 +154,17 @@ for config in \
   7z x -y -o"$TMP/unpack" "$SYSTEM_IMG" "system/$config" >/dev/null 2>&1 || true
   [[ -f "$TMP/unpack/system/$config" ]] || { echo "ERROR: missing Fire OS audio config: $config" >&2; exit 1; }
   install -D -m 0644 "$TMP/unpack/system/$config" "$STAGED_PROP/$config"
+  if [[ "$config" == etc/audio_device.xml ]]; then
+    # Fire OS sets the four TI microphone ADCs to a 20 dB analog preamp and
+    # relies on Amazon's audio processor for the rest of the gain. That
+    # processor never starts on this build, so raise the preamp to 36 dB:
+    # speech then reaches apps at a normal level and the loudest speech
+    # measured still peaks about 4 dB below full scale.
+    sed -i -E 's/(name="ADC_[A-D] MICPGA Volume Ctrl" value=)"40"/\1"72"/' "$STAGED_PROP/$config"
+    [[ "$(grep -c 'MICPGA Volume Ctrl" value="72"' "$STAGED_PROP/$config")" == 4 ]] || {
+      echo "ERROR: could not raise the microphone preamp in $config" >&2; exit 1;
+    }
+  fi
   copy_files+=("vendor/amazon/mt8163-common/proprietary/$config:\$(TARGET_COPY_OUT_SYSTEM)/$config")
 done
 

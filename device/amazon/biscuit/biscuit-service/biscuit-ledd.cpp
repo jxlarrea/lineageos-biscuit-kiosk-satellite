@@ -31,6 +31,9 @@ static unsigned g_generation;
 static unsigned g_volume_generation;
 static std::string g_manual;
 static std::string g_active;
+// The last frame a client sent with FRAME, put back after the volume
+// overlay. Empty once anything else owns the ring.
+static std::string g_client_frame;
 static bool g_countdown_running;
 static unsigned g_countdown_generation;
 static long long g_countdown_remaining;
@@ -219,6 +222,7 @@ static void* player(void* arg) {
 
 static void play_name(const std::string& name, bool manual) {
     pthread_mutex_lock(&g_lock);
+    g_client_frame.clear();
     if (manual) {
         g_manual = name;
         g_countdown_running = false;
@@ -243,8 +247,12 @@ static void* volume_clearer(void* arg) {
     usleep(1000 * 1000);
     pthread_mutex_lock(&g_lock);
     bool clear = gen == g_volume_generation && g_manual.empty();
+    std::string restore = g_client_frame;
     pthread_mutex_unlock(&g_lock);
-    if (clear) write_file(LED_FRAME, "000000000000000000000000000000000000000000000000000000000000000000000000");
+    // A client's frame comes back after the overlay rather than a dark ring.
+    if (clear) write_file(LED_FRAME, restore.empty()
+            ? "000000000000000000000000000000000000000000000000000000000000000000000000"
+            : restore);
     return NULL;
 }
 
@@ -310,6 +318,7 @@ static void show_countdown(long long remaining, long long total) {
     bool start = false;
     unsigned generation = 0;
     pthread_mutex_lock(&g_lock);
+    g_client_frame.clear();
     g_manual = "countdown";
     g_active = "countdown";
     ++g_generation;
@@ -331,8 +340,24 @@ static void show_countdown(long long remaining, long long total) {
     }
 }
 
+// Stops whatever the daemon is animating, without touching the ring.
+static void stop_effects() {
+    pthread_mutex_lock(&g_lock);
+    g_manual.clear();
+    g_active.clear();
+    g_running = false;
+    g_countdown_running = false;
+    g_countdown_remaining = 0;
+    g_countdown_total = 0;
+    ++g_generation;
+    ++g_volume_generation;
+    ++g_countdown_generation;
+    pthread_mutex_unlock(&g_lock);
+}
+
 static void clear() {
     pthread_mutex_lock(&g_lock);
+    g_client_frame.clear();
     g_manual.clear();
     g_active.clear();
     g_running = false;
@@ -350,7 +375,17 @@ static void handle(int fd, char* line) {
     char* nl = strchr(line, '\n'); if (nl) *nl = 0;
     if (!strncmp(line, "FRAME ", 6)) {
         std::string hex = trim(line + 6);
-        if (valid_frame(hex)) { clear(); write_file(LED_FRAME, hex); dprintf(fd, "OK\n"); }
+        // A frame replaces the ring in one write. Clearing first blanked it
+        // for about 14 ms on every frame, which made a client's animation
+        // (20 frames a second) strobe.
+        if (valid_frame(hex)) {
+            stop_effects();
+            pthread_mutex_lock(&g_lock);
+            g_client_frame = hex;
+            pthread_mutex_unlock(&g_lock);
+            write_file(LED_FRAME, hex);
+            dprintf(fd, "OK\n");
+        }
         else dprintf(fd, "ERR bad frame\n");
     } else if (!strncmp(line, "PLAY ", 5)) {
         std::string name = trim(line + 5);
