@@ -62,7 +62,6 @@ LOCAL_OVERRIDES_PACKAGES += \
     PrintRecommendationService \
     Profiles \
     SharedStorageBackup \
-    StatementService \
     WallpaperBackup \
     WAPPushManager \
     WeatherManagerService \
