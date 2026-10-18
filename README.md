@@ -1,4 +1,4 @@
-# Kiosk Satellite Edition for the Echo Dot (2nd Gen)
+# LineageOS 14.1 Kiosk Satellite Edition for the Echo Dot (2nd Gen)
 
 A LineageOS 14.1 (Android 7.1.2) image for the 2nd generation Echo Dot (`biscuit`), tuned to run [Kiosk Satellite](https://github.com/jxlarrea/kiosk-satellite) as a voice satellite, intercom and speaker for Home Assistant. It is built on [hkfuertes' CM14.1 port](https://github.com/hkfuertes/amazon_device_biscuit) and made for this one job, so it leaves out the launcher, the screen apps and telephony.
 

@@ -79,4 +79,9 @@ LOCAL_OVERRIDES_PACKAGES += \
     Telecom \
     TelephonyProvider \
     TeleService
+# The Android System WebView. Nothing on a headless device draws a web page:
+# Kiosk Satellite builds no UI there, and signing in to a captive Wi-Fi portal
+# needs a screen. 80 MB of /system and a library preparation on every boot.
+LOCAL_OVERRIDES_PACKAGES += \
+    webview
 include $(BUILD_PACKAGE)
