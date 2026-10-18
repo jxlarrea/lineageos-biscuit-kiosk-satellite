@@ -24,7 +24,7 @@ See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change 
 
 ## Installing
 
-1. Download the `.zip` file from the [latest release](https://github.com/jxlarrea/amazon_device_biscuit/releases/latest).
+1. Download the `.zip` file from the [latest release](https://github.com/jxlarrea/lineageos-biscuit-kiosk-satellite/releases/latest).
 2. Start TWRP:
 
    ```sh

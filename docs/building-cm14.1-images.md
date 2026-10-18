@@ -1,7 +1,7 @@
 # Building the CM14.1 Biscuit Images
 
 > [!WARNING]
-> **Amonet Biscuit v2.0.0 is required to install either generated OTA on a Biscuit.** The images target its TWRP 3.7.0_9-0 native A/B contract. v2 uses a Preloader exploit, removes GPT remapping and `lk-payload`, supports Fire OS 6 only, and intentionally removes stock non-hacked fastboot. Building does not require a connected device, but installation must not use stock recovery, stock fastboot, Amonet v1 instructions, or `boot_a_x` paths. Read the [upstream v2 announcement](https://xdaforums.com/t/unlock-root-twrp-unbrick-amazon-echo-dot-2nd-gen-2016-biscuit.4761416/page-12#post-90734139) and [Amonet 2 notes](amonet-biscuit-unlock.md) first.
+> **Amonet Biscuit v2.0.0 is required to install either generated OTA on a Biscuit.** The images target its TWRP 3.7.0_9-0 native A/B contract. v2 uses a Preloader exploit, removes GPT remapping and `lk-payload`, supports Fire OS 6 only, and intentionally removes stock non-hacked fastboot. Building does not require a connected device, but installation must not use stock recovery, stock fastboot, Amonet v1 instructions, or `boot_a_x` paths. See [Unlocking the Echo Dot](unlocking.md) and [Getting into TWRP](twrp.md) first.
 
 This guide describes the two reproducible CM14.1 products in this repository:
 
@@ -17,7 +17,7 @@ The minimal image intentionally contains no APKs and no `/system/framework` entr
 - A Linux host with Git, Docker, Python 3, `repo`, `curl`, `sha256sum`, and enough disk space for the CM14.1 checkout, downloads, outputs, and ccache.
 - The repository checkout at its top level.
 - Network access on the first sync/build so tracked scripts can obtain the pinned source archives and Fire OS inputs.
-- For installation only: a Biscuit updated to **Amonet Biscuit v2.0.0** and booted into TWRP 3.7.0_9-0. Its own update changes early boot components, so follow the [upstream announcement](https://xdaforums.com/t/unlock-root-twrp-unbrick-amazon-echo-dot-2nd-gen-2016-biscuit.4761416/page-12#post-90734139) without interruption; see [Amonet 2 notes](amonet-biscuit-unlock.md).
+- For installation only: a Biscuit updated to **Amonet Biscuit v2.0.0** and booted into TWRP 3.7.0_9-0. See [Unlocking the Echo Dot](unlocking.md).
 
 The supported build images are created once when needed:
 
@@ -67,7 +67,7 @@ PATCH_PROFILE=full
 
 The build script stages the flat Biscuit overlay, applies every patch in `patches/full/` in filename order, extracts the full verified Fire OS vendor closure, stages the Fire OS 6 Biscuit kernel, applies every patch in `patches/kernel/` in filename order, and starts the detached `cm14.1-biscuit-build` container.
 
-The full product includes the Android framework, framework Wi-Fi/Bluetooth/audio paths, BiscuitService, the native LED daemon, headless-display compatibility, proprietary audio/radio/Bluetooth blobs, and the full patch profile. Use the [full-product smoke checklist](baseline-smoke-checks.md#full-product) after deployment.
+The full product includes the Android framework, framework Wi-Fi/Bluetooth/audio paths, BiscuitService, the native LED daemon, headless-display compatibility, proprietary audio/radio/Bluetooth blobs, and the full patch profile.
 
 ## Build the framework-free minimal image
 
@@ -86,7 +86,7 @@ CLEAN_BISCUIT_OUT=1
 
 The clean product-output step is deliberate: an incremental switch from the full product could otherwise leave full-framework files in the minimal system image. The build stages only the framework-free rootfs and the radio/Wi-Fi vendor closure, applies `patches/minimal/` in filename order plus the common kernel patches, and starts the same detached build container.
 
-The minimal product supplies root USB/TCP ADB, `wpa_connect`, `wpa_passphrase`, `wpa_supplicant`, DHCP, `netd` DNS proxying, CA certificates, shell/network/debug tools, raw audio tools, and the replaceable `ledcontroller` service slot. It deliberately excludes the Android framework, APKs, Java BiscuitService, and Bluetooth framework/audio stack. Use the [framework-free minimal smoke checklist](baseline-smoke-checks.md#framework-free-minimal-product) after deployment.
+The minimal product supplies root USB/TCP ADB, `wpa_connect`, `wpa_passphrase`, `wpa_supplicant`, DHCP, `netd` DNS proxying, CA certificates, shell/network/debug tools, raw audio tools, and the replaceable `ledcontroller` service slot. It deliberately excludes the Android framework, APKs, Java BiscuitService, and Bluetooth framework/audio stack.
 
 ## Switching products safely
 
@@ -117,7 +117,7 @@ Before any installation, verify the generated updater. A safe Biscuit custom OTA
 - has no userdata/cache/recovery image or wipe command;
 - uses the Amonet 2 current-slot assertion contract.
 
-Use only confirmed Amonet 2 TWRP sideload for installation. The full A/B installation procedure belongs in [Amonet 2 notes](amonet-biscuit-unlock.md), not in a build script.
+Install from TWRP only, into both slots, as the [README](../README.md#installing) describes.
 
 ## Patch application model
 
