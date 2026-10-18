@@ -1,0 +1,217 @@
+--- a/hardware/amazon/audio/audio_wrapper.c
++++ b/hardware/amazon/audio/audio_wrapper.c
+@@ -5,11 +5,13 @@
+ #define LOG_TAG "audio.amazon_wrapper"
+ 
+ #include <errno.h>
++#include <math.h>
+ #include <stdbool.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <time.h>
+ 
++#include <cutils/properties.h>
+ #include <hardware/audio.h>
+ #include <hardware/hardware.h>
+ #include <log/log.h>
+@@ -23,11 +25,46 @@
+     bool mic_muted;
+ };
+ 
++/*
++ * Speaker tuning. Fire OS shapes the signal for the small driver in Amazon's
++ * audio processor, which never starts on this build, so the speaker got the
++ * full range at full level. A high-pass filter removes the bass the driver
++ * cannot reproduce and a peak limiter keeps the rest from clipping.
++ * persist.biscuit.spk_hpf_hz sets the cutoff (0 turns the filter off) and
++ * persist.biscuit.spk_limiter 0 turns the limiter off. Both are read again
++ * whenever playback resumes from standby.
++ */
++#define SPK_MAX_CHANNELS 2
++#define SPK_HPF_SECTIONS 2
++#define SPK_DEFAULT_HPF_HZ 200
++#define SPK_LIMIT_CEILING 0.891f /* -1 dBFS */
++#define SPK_LIMIT_RELEASE_MS 100.0f
++
++struct biquad {
++    float b0, b1, b2, a1, a2;
++    float z1[SPK_MAX_CHANNELS];
++    float z2[SPK_MAX_CHANNELS];
++};
++
++struct speaker_tuning {
++    bool hpf;
++    bool limiter;
++    struct biquad sections[SPK_HPF_SECTIONS];
++    float gain;
++    float release;
++    int16_t* scratch;
++    size_t scratch_bytes;
++};
++
+ struct wrapper_stream_out {
+     struct audio_stream_out stream;
+     struct audio_stream_out* amazon_stream;
+     bool active;
+     bool amp_on;
++    uint32_t rate;
++    int channels;
++    bool pcm16;
++    struct speaker_tuning tuning;
+ };
+ 
+ static struct audio_hw_device* real_dev(struct audio_hw_device* dev) {
+@@ -152,6 +189,103 @@
+ static int out_flush(struct audio_stream_out* stream);
+ static int out_get_presentation_position(const struct audio_stream_out* stream, uint64_t* frames, struct timespec* timestamp);
+ 
++static void biquad_highpass(struct biquad* bq, float rate, float hz, float q) {
++    float w0 = 2.0f * (float)M_PI * hz / rate;
++    float cosw = cosf(w0);
++    float alpha = sinf(w0) / (2.0f * q);
++    float a0 = 1.0f + alpha;
++
++    bq->b0 = (1.0f + cosw) / 2.0f / a0;
++    bq->b1 = -(1.0f + cosw) / a0;
++    bq->b2 = bq->b0;
++    bq->a1 = -2.0f * cosw / a0;
++    bq->a2 = (1.0f - alpha) / a0;
++    memset(bq->z1, 0, sizeof(bq->z1));
++    memset(bq->z2, 0, sizeof(bq->z2));
++}
++
++static void speaker_tuning_load(struct wrapper_stream_out* out) {
++    struct speaker_tuning* t = &out->tuning;
++    /* The Q of each section of a 4th order Butterworth filter. */
++    static const float q[SPK_HPF_SECTIONS] = {0.5412f, 1.3066f};
++    int hz = property_get_int32("persist.biscuit.spk_hpf_hz", SPK_DEFAULT_HPF_HZ);
++    int i;
++
++    t->hpf = false;
++    t->limiter = false;
++    if (!out->pcm16 || out->channels < 1 || out->channels > SPK_MAX_CHANNELS ||
++            out->rate == 0) {
++        return;
++    }
++    if (hz > 0 && hz < (int)out->rate / 4) {
++        for (i = 0; i < SPK_HPF_SECTIONS; i++) {
++            biquad_highpass(&t->sections[i], (float)out->rate, (float)hz, q[i]);
++        }
++        t->hpf = true;
++    }
++    t->limiter = property_get_bool("persist.biscuit.spk_limiter", true);
++    t->gain = 1.0f;
++    t->release = 1.0f - expf(-1.0f / (SPK_LIMIT_RELEASE_MS / 1000.0f * out->rate));
++}
++
++/* Returns the buffer to write: the tuned copy, or the input untouched. */
++static const void* speaker_tuning_process(struct wrapper_stream_out* out,
++                                          const void* buffer, size_t bytes) {
++    struct speaker_tuning* t = &out->tuning;
++    const int16_t* in = buffer;
++    size_t frames;
++    size_t f;
++    int c, s;
++
++    if (!t->hpf && !t->limiter) {
++        return buffer;
++    }
++    if (bytes > t->scratch_bytes) {
++        int16_t* grown = realloc(t->scratch, bytes);
++        if (!grown) {
++            return buffer;
++        }
++        t->scratch = grown;
++        t->scratch_bytes = bytes;
++    }
++    frames = bytes / (sizeof(int16_t) * out->channels);
++    for (f = 0; f < frames; f++) {
++        float v[SPK_MAX_CHANNELS];
++        float peak = 0.0f;
++
++        for (c = 0; c < out->channels; c++) {
++            float x = in[f * out->channels + c] / 32768.0f;
++            if (t->hpf) {
++                for (s = 0; s < SPK_HPF_SECTIONS; s++) {
++                    struct biquad* bq = &t->sections[s];
++                    float y = bq->b0 * x + bq->z1[c];
++                    bq->z1[c] = bq->b1 * x - bq->a1 * y + bq->z2[c];
++                    bq->z2[c] = bq->b2 * x - bq->a2 * y;
++                    x = y;
++                }
++            }
++            v[c] = x;
++            if (fabsf(x) > peak) peak = fabsf(x);
++        }
++        if (t->limiter) {
++            /* Gain drops at once on a peak and recovers over the release. */
++            float target = peak > SPK_LIMIT_CEILING ? SPK_LIMIT_CEILING / peak : 1.0f;
++            if (target < t->gain) {
++                t->gain = target;
++            } else {
++                t->gain += (1.0f - t->gain) * t->release;
++            }
++        }
++        for (c = 0; c < out->channels; c++) {
++            float y = v[c] * (t->limiter ? t->gain : 1.0f) * 32768.0f;
++            if (y > 32767.0f) y = 32767.0f;
++            if (y < -32768.0f) y = -32768.0f;
++            t->scratch[f * out->channels + c] = (int16_t)lrintf(y);
++        }
++    }
++    return t->scratch;
++}
++
+ static void apply_speaker_route(void) {
+     struct mixer* mixer = mixer_open(CARD);
+ 
+@@ -271,6 +405,11 @@
+ 
+     out->amazon_stream = amazon_stream;
+     out->stream = *amazon_stream;
++    out->rate = amazon_stream->common.get_sample_rate(&amazon_stream->common);
++    out->channels = audio_channel_count_from_out_mask(
++            amazon_stream->common.get_channels(&amazon_stream->common));
++    out->pcm16 = amazon_stream->common.get_format(&amazon_stream->common) ==
++            AUDIO_FORMAT_PCM_16_BIT;
+ 
+     // ponytail: every vendor callback must receive the real Fire OS stream.
+     if (amazon_stream->common.get_sample_rate) out->stream.common.get_sample_rate = out_get_sample_rate;
+@@ -311,6 +450,7 @@
+     out_standby(&out->stream.common);
+     adev->amazon_device->close_output_stream(adev->amazon_device,
+                                              out->amazon_stream);
++    free(out->tuning.scratch);
+     free(out);
+ }
+ 
+@@ -477,6 +617,7 @@
+ 
+     if (!out->active) {
+         apply_speaker_route();
++        speaker_tuning_load(out);
+         out->active = true;
+     }
+     /*
+@@ -485,7 +626,9 @@
+      * a cold codec powering up into a live amplifier crackled on the first
+      * playback after boot. Ported from meiser79's LineageOS 18.1 tree.
+      */
+-    ret = out->amazon_stream->write(out->amazon_stream, buffer, bytes);
++    ret = out->amazon_stream->write(out->amazon_stream,
++                                    speaker_tuning_process(out, buffer, bytes),
++                                    bytes);
+     if (!out->amp_on) {
+         set_speaker_amp(true);
+         out->amp_on = true;
+--- a/hardware/amazon/audio/Android.mk
++++ b/hardware/amazon/audio/Android.mk
+@@ -5,7 +5,7 @@
+ LOCAL_MODULE_RELATIVE_PATH := hw
+ LOCAL_C_INCLUDES := external/tinyalsa/include
+ LOCAL_SRC_FILES := audio_wrapper.c
+-LOCAL_SHARED_LIBRARIES := libhardware liblog libtinyalsa
++LOCAL_SHARED_LIBRARIES := libcutils libhardware liblog libtinyalsa
+ LOCAL_MODULE_TAGS := optional
+ LOCAL_CFLAGS := -Wall -Werror
+ include $(BUILD_SHARED_LIBRARY)
