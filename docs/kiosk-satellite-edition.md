@@ -41,6 +41,7 @@ A CM14.1 Biscuit build tuned for Kiosk Satellite running headless: a voice satel
 | zram with `lzo`, 256 MB | `patches/full/029` | The kernel lacks `zstd`, and 805 MB exceeded the RAM, so swap never started. |
 | No SystemUI, wallpaper service off | `empty-launcher/Android.mk`, `overlay/` | No status bar, navigation bar, keyguard or volume dialog to draw. Android treats the missing keyguard as a device without one. |
 | No LiveDisplay | `overlay/vendor/cmsdk` | It tunes a screen the device does not have, and it crashed the system at boot without SystemUI. |
+| No WebView | `empty-launcher/Android.mk` | Kiosk Satellite builds no UI on a headless device and its plugins are native code, so nothing draws a web page. Signing in to a captive Wi-Fi portal needs a screen anyway. 80 MB of `/system`. |
 | No telephony | `empty-launcher/Android.mk`, `overlay/vendor/cmsdk` | The phone process, Telecom and the telephony, contacts and blocked number providers. The device already had no radio (`ro.radio.noril`). Bluetooth can no longer offer the headset (HFP) profile, which needs a phone. |
 | Debloat | `empty-launcher/Android.mk` | Calendar, contacts, email, gallery, browsers, camera, music, keyboard, file manager, recorder, AudioFX, updater, weather, wallpapers, TTS, print, backup and test apps. StatementService stays: the package manager requires it. |
 | Dalvik heap preset for 512 MB | `device.mk` | Without it every app, system_server included, got ART's 16 MB default heap limit. |
