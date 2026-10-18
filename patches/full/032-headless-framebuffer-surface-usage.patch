@@ -1,0 +1,30 @@
+--- a/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp
++++ b/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp
+@@ -25,6 +25,7 @@
+ #include <errno.h>
+ 
+ #include <cutils/log.h>
++#include <cutils/properties.h>
+ 
+ #include <utils/String8.h>
+ 
+@@ -77,9 +78,16 @@
+ 
+     mName = "FramebufferSurface";
+     mConsumer->setConsumerName(mName);
+-    mConsumer->setConsumerUsageBits(GRALLOC_USAGE_HW_FB |
+-                                       GRALLOC_USAGE_HW_RENDER |
+-                                       GRALLOC_USAGE_HW_COMPOSER);
++    // A headless device has no framebuffer device to allocate from. Asking
++    // gralloc for one fails every frame, so composition never completes and
++    // SurfaceFlinger retries and logs the failure several times a second.
++    uint32_t usage = GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER;
++    char noGpu[PROPERTY_VALUE_MAX];
++    property_get("ro.config.no_gpu", noGpu, "false");
++    if (strcmp(noGpu, "1") && strcmp(noGpu, "true")) {
++        usage |= GRALLOC_USAGE_HW_FB;
++    }
++    mConsumer->setConsumerUsageBits(usage);
+ #ifdef USE_HWC2
+     const auto& activeConfig = mHwc.getActiveConfig(disp);
+     mConsumer->setDefaultBufferSize(activeConfig->getWidth(),
