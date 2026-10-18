@@ -31,6 +31,7 @@ A CM14.1 Biscuit build tuned for Kiosk Satellite running headless: a voice satel
 | Fake display at 1 fps instead of 60 | `patches/full/020` | Fewer compositions on a display nothing reads. |
 | No boot animation | `device.mk` | It crashed dividing by zero on the 1x1 display. Boot completes in under a minute without it. |
 | Kernel command line without `initcall_debug` and with `loglevel=4` | `patches/kernel/020` | Less kernel logging. |
+| All four cores kept online | `init.device.rc` | MediaTek's hotplug daemon parked and unparked cores every second or two at idle. Kiosk Satellite counted the parked time as busy and showed 23 to 27% at idle instead of about 5%. With all four online the temperature stayed at 39 °C. |
 | perfprofd stopped after boot | `init.device.rc` | The profiling daemon only collects for Google's internal builds. |
 | The audio HAL's "asp Pipeline doesn't exist" error dropped in liblog | `patches/full/034` | The HAL calls Amazon's audio processor for every playback buffer, and the processor never starts on this build. It logged about 75 lines a second while anything played. |
 

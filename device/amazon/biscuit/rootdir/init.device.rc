@@ -16,6 +16,14 @@ on property:sys.boot_completed=1
     start ks_install
     # The perf profiling daemon only collects for Google's internal builds.
     stop perfprofd
+    # All four cores stay online. MediaTek's hotplug daemon parked and
+    # unparked them every second or two at idle, which saves next to nothing
+    # on a device that is always plugged in, and an app reading the cores'
+    # idle counters counted the parked time as busy.
+    write /proc/hps/enabled 0
+    write /sys/devices/system/cpu/cpu1/online 1
+    write /sys/devices/system/cpu/cpu2/online 1
+    write /sys/devices/system/cpu/cpu3/online 1
 
 # Kiosk Satellite Edition: installs Kiosk Satellite on first boot and keeps its
 # grants in place. setprop persist.biscuit.ks_install 0 turns it off.
