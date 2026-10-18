@@ -12,6 +12,7 @@ A CM14.1 Biscuit build tuned for Kiosk Satellite running headless: a voice satel
 | Speaker amplifier switched with the codec | `patches/full/031` | Ported from meiser79's LineageOS 18.1 tree: the amplifier comes on after the first write and goes off before standby, so the first playback after boot no longer crackles. |
 | `FRAME` no longer blanks the ring first | `biscuit-ledd.cpp` | A client animating at 20 frames a second strobed. |
 | The volume overlay restores the last client frame | `biscuit-ledd.cpp` | The ring used to go dark after the overlay until the client repainted. |
+| Speaker high-pass filter at 200 Hz | `patches/full/035` | Fire OS shaped the output for the small driver in Amazon's audio processor, which never starts on this build. The filter removes bass the driver cannot reproduce. `persist.biscuit.spk_hpf_hz` sets the cutoff, 0 turns it off. A peak limiter in the same patch reduced distortion at high volume, but it is off by default (`persist.biscuit.spk_limiter`): its gain changes faster than Kiosk Satellite's echo canceller can follow, and the wake word was nearly impossible to hear over music at 75% volume and up. |
 | TSL2540 light sensor fallback | `sensors_biscuit.c` | Backported from meiser79's CM14.1 fork for boards with a TSL2540 instead of a TSL2584. Untested here: this unit has a TSL2584. |
 
 ### Kiosk Satellite

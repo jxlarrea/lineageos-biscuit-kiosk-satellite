@@ -1,3 +1,14 @@
+--- a/hardware/amazon/audio/Android.mk
++++ b/hardware/amazon/audio/Android.mk
+@@ -5,7 +5,7 @@
+ LOCAL_MODULE_RELATIVE_PATH := hw
+ LOCAL_C_INCLUDES := external/tinyalsa/include
+ LOCAL_SRC_FILES := audio_wrapper.c
+-LOCAL_SHARED_LIBRARIES := libhardware liblog libtinyalsa
++LOCAL_SHARED_LIBRARIES := libcutils libhardware liblog libtinyalsa
+ LOCAL_MODULE_TAGS := optional
+ LOCAL_CFLAGS := -Wall -Werror
+ include $(BUILD_SHARED_LIBRARY)
 --- a/hardware/amazon/audio/audio_wrapper.c
 +++ b/hardware/amazon/audio/audio_wrapper.c
 @@ -5,11 +5,13 @@
@@ -14,7 +25,7 @@
  #include <hardware/audio.h>
  #include <hardware/hardware.h>
  #include <log/log.h>
-@@ -23,11 +25,46 @@
+@@ -23,11 +25,52 @@
      bool mic_muted;
  };
  
@@ -22,10 +33,16 @@
 + * Speaker tuning. Fire OS shapes the signal for the small driver in Amazon's
 + * audio processor, which never starts on this build, so the speaker got the
 + * full range at full level. A high-pass filter removes the bass the driver
-+ * cannot reproduce and a peak limiter keeps the rest from clipping.
-+ * persist.biscuit.spk_hpf_hz sets the cutoff (0 turns the filter off) and
-+ * persist.biscuit.spk_limiter 0 turns the limiter off. Both are read again
-+ * whenever playback resumes from standby.
++ * cannot reproduce. persist.biscuit.spk_hpf_hz sets the cutoff (0 turns it
++ * off).
++ *
++ * A peak limiter is there too, but off unless persist.biscuit.spk_limiter is
++ * 1. It reduces distortion at high volume, but its gain changes faster than
++ * Kiosk Satellite's echo canceller can follow, and the wake word was nearly
++ * impossible to hear over music at 75% volume and up. The filter is linear,
++ * so the canceller learns it like the rest of the echo path.
++ *
++ * Both are read again whenever playback resumes from standby.
 + */
 +#define SPK_MAX_CHANNELS 2
 +#define SPK_HPF_SECTIONS 2
@@ -61,7 +78,7 @@
  };
  
  static struct audio_hw_device* real_dev(struct audio_hw_device* dev) {
-@@ -152,6 +189,103 @@
+@@ -152,6 +195,103 @@
  static int out_flush(struct audio_stream_out* stream);
  static int out_get_presentation_position(const struct audio_stream_out* stream, uint64_t* frames, struct timespec* timestamp);
  
@@ -99,7 +116,7 @@
 +        }
 +        t->hpf = true;
 +    }
-+    t->limiter = property_get_bool("persist.biscuit.spk_limiter", true);
++    t->limiter = property_get_bool("persist.biscuit.spk_limiter", false);
 +    t->gain = 1.0f;
 +    t->release = 1.0f - expf(-1.0f / (SPK_LIMIT_RELEASE_MS / 1000.0f * out->rate));
 +}
@@ -165,7 +182,7 @@
  static void apply_speaker_route(void) {
      struct mixer* mixer = mixer_open(CARD);
  
-@@ -271,6 +405,11 @@
+@@ -271,6 +411,11 @@
  
      out->amazon_stream = amazon_stream;
      out->stream = *amazon_stream;
@@ -177,7 +194,7 @@
  
      // ponytail: every vendor callback must receive the real Fire OS stream.
      if (amazon_stream->common.get_sample_rate) out->stream.common.get_sample_rate = out_get_sample_rate;
-@@ -311,6 +450,7 @@
+@@ -311,6 +456,7 @@
      out_standby(&out->stream.common);
      adev->amazon_device->close_output_stream(adev->amazon_device,
                                               out->amazon_stream);
@@ -185,7 +202,7 @@
      free(out);
  }
  
-@@ -477,6 +617,7 @@
+@@ -477,6 +623,7 @@
  
      if (!out->active) {
          apply_speaker_route();
@@ -193,7 +210,7 @@
          out->active = true;
      }
      /*
-@@ -485,7 +626,9 @@
+@@ -485,7 +632,9 @@
       * a cold codec powering up into a live amplifier crackled on the first
       * playback after boot. Ported from meiser79's LineageOS 18.1 tree.
       */
@@ -204,14 +221,3 @@
      if (!out->amp_on) {
          set_speaker_amp(true);
          out->amp_on = true;
---- a/hardware/amazon/audio/Android.mk
-+++ b/hardware/amazon/audio/Android.mk
-@@ -5,7 +5,7 @@
- LOCAL_MODULE_RELATIVE_PATH := hw
- LOCAL_C_INCLUDES := external/tinyalsa/include
- LOCAL_SRC_FILES := audio_wrapper.c
--LOCAL_SHARED_LIBRARIES := libhardware liblog libtinyalsa
-+LOCAL_SHARED_LIBRARIES := libcutils libhardware liblog libtinyalsa
- LOCAL_MODULE_TAGS := optional
- LOCAL_CFLAGS := -Wall -Werror
- include $(BUILD_SHARED_LIBRARY)
