@@ -32,21 +32,21 @@
 +/*
 + * Speaker tuning. Fire OS shapes the signal for the small driver in Amazon's
 + * audio processor, which never starts on this build, so the speaker got the
-+ * full range at full level. A high-pass filter removes the bass the driver
-+ * cannot reproduce. persist.biscuit.spk_hpf_hz sets the cutoff (0 turns it
-+ * off).
++ * full range at full level. Both tools here are off by default: in listening
++ * tests the wake word did slightly worse over loud music with either on, and
++ * the high frequencies sounded harsher once the bass was gone.
 + *
-+ * A peak limiter is there too, but off unless persist.biscuit.spk_limiter is
-+ * 1. It reduces distortion at high volume, but its gain changes faster than
-+ * Kiosk Satellite's echo canceller can follow, and the wake word was nearly
-+ * impossible to hear over music at 75% volume and up. The filter is linear,
-+ * so the canceller learns it like the rest of the echo path.
++ * persist.biscuit.spk_hpf_hz sets a high-pass cutoff in Hz that removes bass
++ * the driver cannot reproduce. persist.biscuit.spk_limiter 1 turns on a peak
++ * limiter, which reduces distortion, but its gain changes faster than Kiosk
++ * Satellite's echo canceller can follow, and before the microphone array
++ * removed the speaker the wake word failed over music at 75% volume and up.
 + *
 + * Both are read again whenever playback resumes from standby.
 + */
 +#define SPK_MAX_CHANNELS 2
 +#define SPK_HPF_SECTIONS 2
-+#define SPK_DEFAULT_HPF_HZ 200
++#define SPK_DEFAULT_HPF_HZ 0
 +#define SPK_LIMIT_CEILING 0.891f /* -1 dBFS */
 +#define SPK_LIMIT_RELEASE_MS 100.0f
 +
