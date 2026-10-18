@@ -1,0 +1,23 @@
+--- a/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -6492,6 +6492,20 @@
+ 
+         final boolean isInjected = (policyFlags & WindowManagerPolicy.FLAG_INJECTED) != 0;
+ 
++        // Biscuit: every press and release of the Action button also goes out
++        // as a broadcast, including while the device sleeps and the key itself
++        // is dropped. A headless kiosk listens for it instead of running an
++        // accessibility service. The key's own handling is unchanged.
++        if (keyCode == KeyEvent.KEYCODE_HELP && event.getRepeatCount() == 0
++                && "biscuit".equals(SystemProperties.get("ro.product.device"))) {
++            Intent intent = new Intent("com.amazon.biscuit.service.ACTION_BUTTON");
++            intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND
++                    | Intent.FLAG_RECEIVER_REGISTERED_ONLY);
++            intent.putExtra("down", down);
++            intent.putExtra("eventTime", event.getEventTime());
++            mContext.sendBroadcastAsUser(intent, UserHandle.ALL);
++        }
++
+         // If screen is off then we treat the case where the keyguard is open but hidden
+         // the same as if it were open and in front.
+         // This will prevent any keys other than the power button from waking the screen

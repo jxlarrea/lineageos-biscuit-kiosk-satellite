@@ -86,3 +86,8 @@ PRODUCT_COPY_FILES += \
     device/amazon/biscuit/biscuit-service/animations/boot-complete-green.animation:$(TARGET_COPY_OUT_SYSTEM)/etc/biscuit-ledd/boot-complete-green.animation
 
 PRODUCT_CHARACTERISTICS := nosdcard,headless
+
+# Kiosk Satellite Edition.
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.biscuit.action_broadcast=1 \
+    log.tag.AudioALSAPlaybackHandlerNormal=S
