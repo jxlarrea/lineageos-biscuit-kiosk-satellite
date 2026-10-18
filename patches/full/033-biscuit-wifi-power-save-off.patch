@@ -1,0 +1,15 @@
+--- a/frameworks/opt/net/wifi/service/java/com/android/server/wifi/WifiNative.java
++++ b/frameworks/opt/net/wifi/service/java/com/android/server/wifi/WifiNative.java
+@@ -1127,6 +1127,12 @@
+     }
+ 
+     public void setPowerSave(boolean enabled) {
++        // A mains powered device can keep the radio awake. In power save the
++        // access point holds broadcasts until the next DTIM beacon, which
++        // delayed or lost the claims kiosks exchange to pick one to answer.
++        if (enabled && !SystemProperties.getBoolean("persist.biscuit.wifi_powersave", true)) {
++            enabled = false;
++        }
+         if (enabled) {
+             doBooleanCommand("SET ps 1");
+         } else {

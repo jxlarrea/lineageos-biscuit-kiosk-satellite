@@ -110,6 +110,11 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.config.low_ram=true \
     ro.sys.fw.bg_apps_limit=8
 
+# Wi-Fi power save off: see patch 033. setprop persist.biscuit.wifi_powersave 1
+# turns it back on.
+PRODUCT_PROPERTY_OVERRIDES += \
+    persist.biscuit.wifi_powersave=0
+
 # Nothing to animate on a 1x1 display, and the animation crashed dividing by
 # zero on it.
 PRODUCT_PROPERTY_OVERRIDES += \
