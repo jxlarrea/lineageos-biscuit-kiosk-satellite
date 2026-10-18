@@ -1,0 +1,670 @@
+--- /dev/null
++++ b/hardware/amazon/audio/mic_beam.h
+@@ -0,0 +1,35 @@
++/*
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++#ifndef BISCUIT_MIC_BEAM_H
++#define BISCUIT_MIC_BEAM_H
++
++#include <stddef.h>
++#include <stdint.h>
++#include <sys/types.h>
++
++/*
++ * Reads the Echo Dot's microphone array directly and removes the speaker
++ * from it. See mic_beam.c.
++ */
++
++/* What has been learned about the speaker. Outlives each capture session. */
++struct mic_beam_model;
++
++/* One capture session, holding the microphone PCM open. */
++struct mic_beam;
++
++struct mic_beam_model* mic_beam_model_create(void);
++void mic_beam_model_free(struct mic_beam_model* model);
++
++/* Opens the microphone PCM. NULL when it cannot, such as when it is busy. */
++struct mic_beam* mic_beam_open(struct mic_beam_model* model);
++
++/* Fills out with frames of 16 kHz mono. Blocks like a PCM read. Returns
++ * frames or a negative errno. */
++ssize_t mic_beam_read(struct mic_beam* beam, int16_t* out, size_t frames);
++
++void mic_beam_close(struct mic_beam* beam);
++
++#endif
+--- /dev/null
++++ b/hardware/amazon/audio/mic_beam.c
+@@ -0,0 +1,332 @@
++/*
++ * SPDX-License-Identifier: Apache-2.0
++ *
++ * The speaker sits a few centimeters below the Echo Dot's seven microphones.
++ * At high volume its sound reaches them about 20 dB above a voice across the
++ * room, and much of it is distortion, which an echo canceller cannot model.
++ *
++ * The speaker never moves relative to the microphones, so its sound, the
++ * distortion included, always arrives with the same pattern across them.
++ * This removes that pattern. For each frequency it learns how the speaker
++ * reaches each microphone from the codec's own copy of the speaker signal,
++ * channel 8 of the microphone PCM, which shares the microphones' clock. A
++ * voice is not in that signal, so talking over music cannot disturb what is
++ * learned. The output is microphone 0, the one Amazon's HAL hands Android,
++ * minus its projection onto the speaker's pattern.
++ *
++ * The removal fades in while the speaker plays and fades out after it stops,
++ * so in a quiet room the output is microphone 0 unchanged: the removal also
++ * takes some of a voice's low end with it.
++ */
++
++#define LOG_TAG "audio.biscuit_mic_beam"
++
++#include "mic_beam.h"
++
++#include <errno.h>
++#include <math.h>
++#include <pthread.h>
++#include <stdbool.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include <log/log.h>
++#include <tinyalsa/asoundlib.h>
++
++#define BEAM_CARD 0
++#define BEAM_DEVICE 24
++#define BEAM_RATE 16000
++#define BEAM_CHANNELS 9
++#define BEAM_MICS 7
++#define BEAM_REF_CHANNEL 8
++#define BEAM_OUT_MIC 0
++#define BEAM_N 512
++#define BEAM_HOP 256
++#define BEAM_BINS (BEAM_N / 2 + 1)
++
++/* How long the learned pattern remembers, in seconds of speaker output. */
++#define BEAM_LEARN_SECONDS 2.0f
++/* Speaker output learned from before the removal starts: about 2.4 s. */
++#define BEAM_TRAINED_HOPS 150
++/* Mean square of the reference: learn above about -60 dBFS, remove above
++ * about -50 dBFS. */
++#define BEAM_REF_LEARN 1e-6f
++#define BEAM_REF_ACTIVE 1e-5f
++/* Per hop of 16 ms: in within about 60 ms, out over about 1 s. */
++#define BEAM_MIX_ATTACK 0.25f
++#define BEAM_MIX_RELEASE 0.015f
++
++struct mic_beam_model {
++    float cross_re[BEAM_BINS][BEAM_MICS];
++    float cross_im[BEAM_BINS][BEAM_MICS];
++    int trained;
++};
++
++struct mic_beam {
++    struct pcm* pcm;
++    struct mic_beam_model* model;
++    uint8_t raw[BEAM_HOP * BEAM_CHANNELS * 3];
++    /* The last BEAM_N samples of each microphone, then of the reference. */
++    float hist[BEAM_MICS + 1][BEAM_N];
++    float re[BEAM_MICS + 1][BEAM_N];
++    float im[BEAM_MICS + 1][BEAM_N];
++    float ola[BEAM_N];
++    int16_t out[BEAM_HOP];
++    size_t out_pos;
++    float mix;
++};
++
++static float window[BEAM_N];
++static float twiddle_re[BEAM_N / 2];
++static float twiddle_im[BEAM_N / 2];
++static uint16_t bit_reverse[BEAM_N];
++static pthread_once_t tables_once = PTHREAD_ONCE_INIT;
++
++static void make_tables(void) {
++    int bits = 0;
++    int i, b;
++
++    while ((1 << bits) < BEAM_N) bits++;
++    for (i = 0; i < BEAM_N; i++) {
++        int r = 0;
++        for (b = 0; b < bits; b++) {
++            if (i & (1 << b)) r |= 1 << (bits - 1 - b);
++        }
++        bit_reverse[i] = (uint16_t)r;
++        /* Square root of a periodic Hann window, on analysis and synthesis:
++         * the two multiply to a Hann window, which sums to one at 50%
++         * overlap. */
++        window[i] = sqrtf(0.5f - 0.5f * cosf(2.0f * (float)M_PI * i / BEAM_N));
++    }
++    for (i = 0; i < BEAM_N / 2; i++) {
++        twiddle_re[i] = cosf(2.0f * (float)M_PI * i / BEAM_N);
++        twiddle_im[i] = -sinf(2.0f * (float)M_PI * i / BEAM_N);
++    }
++}
++
++static void fft(float* re, float* im, bool inverse) {
++    int i, size, start, k;
++
++    for (i = 0; i < BEAM_N; i++) {
++        int j = bit_reverse[i];
++        if (i < j) {
++            float t = re[i]; re[i] = re[j]; re[j] = t;
++            t = im[i]; im[i] = im[j]; im[j] = t;
++        }
++    }
++    for (size = 2; size <= BEAM_N; size <<= 1) {
++        int half = size / 2;
++        int step = BEAM_N / size;
++        for (start = 0; start < BEAM_N; start += size) {
++            for (k = 0; k < half; k++) {
++                float wr = twiddle_re[k * step];
++                float wi = inverse ? -twiddle_im[k * step] : twiddle_im[k * step];
++                int a = start + k;
++                int b = a + half;
++                float tr = re[b] * wr - im[b] * wi;
++                float ti = re[b] * wi + im[b] * wr;
++                re[b] = re[a] - tr;
++                im[b] = im[a] - ti;
++                re[a] += tr;
++                im[a] += ti;
++            }
++        }
++    }
++}
++
++static float decode_s24(const uint8_t* p) {
++    int32_t v = p[0] | (p[1] << 8) | (p[2] << 16);
++    if (v & 0x800000) v -= 1 << 24;
++    return v / 8388608.0f;
++}
++
++static void beam_hop(struct mic_beam* beam) {
++    struct mic_beam_model* model = beam->model;
++    float frame[BEAM_N];
++    float ref_power = 0.0f;
++    float target;
++    int c, n, k;
++
++    for (c = 0; c <= BEAM_MICS; c++) {
++        int channel = c < BEAM_MICS ? c : BEAM_REF_CHANNEL;
++        float* h = beam->hist[c];
++        memmove(h, h + BEAM_HOP, (BEAM_N - BEAM_HOP) * sizeof(float));
++        for (n = 0; n < BEAM_HOP; n++) {
++            h[BEAM_N - BEAM_HOP + n] =
++                    decode_s24(&beam->raw[(n * BEAM_CHANNELS + channel) * 3]);
++        }
++    }
++    for (n = BEAM_N - BEAM_HOP; n < BEAM_N; n++) {
++        float v = beam->hist[BEAM_MICS][n];
++        ref_power += v * v;
++    }
++    ref_power /= BEAM_HOP;
++
++    if (ref_power > BEAM_REF_LEARN) {
++        const float keep = expf(-(float)BEAM_HOP / (BEAM_RATE * BEAM_LEARN_SECONDS));
++        for (c = 0; c <= BEAM_MICS; c++) {
++            for (n = 0; n < BEAM_N; n++) {
++                beam->re[c][n] = beam->hist[c][n] * window[n];
++                beam->im[c][n] = 0.0f;
++            }
++            fft(beam->re[c], beam->im[c], false);
++        }
++        for (k = 0; k < BEAM_BINS; k++) {
++            float rr = beam->re[BEAM_MICS][k];
++            float ri = beam->im[BEAM_MICS][k];
++            for (c = 0; c < BEAM_MICS; c++) {
++                float xr = beam->re[c][k];
++                float xi = beam->im[c][k];
++                /* The microphone times the conjugate of the reference. */
++                model->cross_re[k][c] = keep * model->cross_re[k][c] +
++                        (1.0f - keep) * (xr * rr + xi * ri);
++                model->cross_im[k][c] = keep * model->cross_im[k][c] +
++                        (1.0f - keep) * (xi * rr - xr * ri);
++            }
++        }
++        if (model->trained < BEAM_TRAINED_HOPS) model->trained++;
++    }
++
++    target = model->trained >= BEAM_TRAINED_HOPS && ref_power > BEAM_REF_ACTIVE ? 1.0f : 0.0f;
++    beam->mix += (target - beam->mix) *
++            (target > beam->mix ? BEAM_MIX_ATTACK : BEAM_MIX_RELEASE);
++
++    if (beam->mix < 0.001f) {
++        /* Microphone 0 as it is, through the same windows. */
++        for (n = 0; n < BEAM_N; n++) {
++            frame[n] = beam->hist[BEAM_OUT_MIC][n] * window[n] * window[n];
++        }
++    } else {
++        float* yr = beam->re[BEAM_MICS];
++        float* yi = beam->im[BEAM_MICS];
++
++        if (ref_power <= BEAM_REF_LEARN) {
++            /* Not transformed above while learning was off. */
++            for (c = 0; c < BEAM_MICS; c++) {
++                for (n = 0; n < BEAM_N; n++) {
++                    beam->re[c][n] = beam->hist[c][n] * window[n];
++                    beam->im[c][n] = 0.0f;
++                }
++                fft(beam->re[c], beam->im[c], false);
++            }
++        }
++        for (k = 0; k < BEAM_BINS; k++) {
++            float c0r = model->cross_re[k][0];
++            float c0i = model->cross_im[k][0];
++            float n0 = c0r * c0r + c0i * c0i;
++            float x0r = beam->re[BEAM_OUT_MIC][k];
++            float x0i = beam->im[BEAM_OUT_MIC][k];
++            float pr = 0.0f, pi = 0.0f, dd = 0.0f;
++
++            if (!(n0 > 1e-24f)) {
++                yr[k] = x0r;
++                yi[k] = x0i;
++                continue;
++            }
++            for (c = 0; c < BEAM_MICS; c++) {
++                /* d = cross_c / cross_0, how the speaker reaches microphone
++                 * c relative to microphone 0. */
++                float cr = model->cross_re[k][c];
++                float ci = model->cross_im[k][c];
++                float dr = (cr * c0r + ci * c0i) / n0;
++                float di = (ci * c0r - cr * c0i) / n0;
++                float xr = beam->re[c][k];
++                float xi = beam->im[c][k];
++                dd += dr * dr + di * di;
++                /* conj(d) times x */
++                pr += dr * xr + di * xi;
++                pi += dr * xi - di * xr;
++            }
++            if (!(dd >= 1.0f) || !isfinite(dd)) {
++                yr[k] = x0r;
++                yi[k] = x0i;
++                continue;
++            }
++            yr[k] = x0r - beam->mix * pr / dd;
++            yi[k] = x0i - beam->mix * pi / dd;
++        }
++        for (k = 1; k < BEAM_N / 2; k++) {
++            yr[BEAM_N - k] = yr[k];
++            yi[BEAM_N - k] = -yi[k];
++        }
++        yi[0] = 0.0f;
++        yi[BEAM_N / 2] = 0.0f;
++        fft(yr, yi, true);
++        for (n = 0; n < BEAM_N; n++) {
++            frame[n] = yr[n] / BEAM_N * window[n];
++        }
++    }
++
++    for (n = 0; n < BEAM_N; n++) beam->ola[n] += frame[n];
++    for (n = 0; n < BEAM_HOP; n++) {
++        float y = beam->ola[n] * 32768.0f;
++        if (y > 32767.0f) y = 32767.0f;
++        if (y < -32768.0f) y = -32768.0f;
++        beam->out[n] = (int16_t)lrintf(y);
++    }
++    memmove(beam->ola, beam->ola + BEAM_HOP, (BEAM_N - BEAM_HOP) * sizeof(float));
++    memset(beam->ola + BEAM_N - BEAM_HOP, 0, BEAM_HOP * sizeof(float));
++    beam->out_pos = 0;
++}
++
++struct mic_beam_model* mic_beam_model_create(void) {
++    pthread_once(&tables_once, make_tables);
++    return calloc(1, sizeof(struct mic_beam_model));
++}
++
++void mic_beam_model_free(struct mic_beam_model* model) {
++    free(model);
++}
++
++struct mic_beam* mic_beam_open(struct mic_beam_model* model) {
++    struct pcm_config config = {
++        .channels = BEAM_CHANNELS,
++        .rate = BEAM_RATE,
++        .period_size = BEAM_HOP,
++        .period_count = 4,
++        .format = PCM_FORMAT_S24_3LE,
++    };
++    struct mic_beam* beam;
++
++    if (!model) return NULL;
++    beam = calloc(1, sizeof(*beam));
++    if (!beam) return NULL;
++    beam->pcm = pcm_open(BEAM_CARD, BEAM_DEVICE, PCM_IN, &config);
++    if (!beam->pcm || !pcm_is_ready(beam->pcm)) {
++        ALOGW("cannot open the microphone PCM: %s",
++              beam->pcm ? pcm_get_error(beam->pcm) : "no memory");
++        if (beam->pcm) pcm_close(beam->pcm);
++        free(beam);
++        return NULL;
++    }
++    beam->model = model;
++    beam->out_pos = BEAM_HOP;
++    return beam;
++}
++
++ssize_t mic_beam_read(struct mic_beam* beam, int16_t* out, size_t frames) {
++    size_t done = 0;
++
++    while (done < frames) {
++        size_t n;
++        if (beam->out_pos >= BEAM_HOP) {
++            if (pcm_read(beam->pcm, beam->raw, sizeof(beam->raw)) != 0) {
++                ALOGE("microphone PCM read failed: %s", pcm_get_error(beam->pcm));
++                return -EIO;
++            }
++            beam_hop(beam);
++        }
++        n = BEAM_HOP - beam->out_pos;
++        if (n > frames - done) n = frames - done;
++        memcpy(out + done, beam->out + beam->out_pos, n * sizeof(int16_t));
++        beam->out_pos += n;
++        done += n;
++    }
++    return (ssize_t)done;
++}
++
++void mic_beam_close(struct mic_beam* beam) {
++    if (!beam) return;
++    pcm_close(beam->pcm);
++    free(beam);
++}
+--- a/hardware/amazon/audio/Android.mk
++++ b/hardware/amazon/audio/Android.mk
+@@ -4,7 +4,7 @@
+ LOCAL_MODULE := audio.primary.mt8163
+ LOCAL_MODULE_RELATIVE_PATH := hw
+ LOCAL_C_INCLUDES := external/tinyalsa/include
+-LOCAL_SRC_FILES := audio_wrapper.c
++LOCAL_SRC_FILES := audio_wrapper.c mic_beam.c
+ LOCAL_SHARED_LIBRARIES := libcutils libhardware liblog libtinyalsa
+ LOCAL_MODULE_TAGS := optional
+ LOCAL_CFLAGS := -Wall -Werror
+--- a/hardware/amazon/audio/audio_wrapper.c
++++ b/hardware/amazon/audio/audio_wrapper.c
+@@ -17,12 +17,15 @@
+ #include <log/log.h>
+ #include <tinyalsa/asoundlib.h>
+ 
++#include "mic_beam.h"
++
+ #define CARD 0
+ 
+ struct wrapper_audio_device {
+     struct audio_hw_device device;
+     struct audio_hw_device* amazon_device;
+     bool mic_muted;
++    struct mic_beam_model* beam_model;
+ };
+ 
+ /*
+@@ -460,6 +463,174 @@
+     free(out);
+ }
+ 
++/*
++ * Input streams. The voice capture Android opens (16 kHz mono from the
++ * built-in microphones) reads the microphone array itself through mic_beam.c,
++ * which removes the speaker from it. Every other capture, and this one when
++ * persist.biscuit.mic_beam is 0 or the array cannot be opened, goes to the
++ * Fire OS HAL, which hands Android microphone 0 unprocessed.
++ */
++struct wrapper_stream_in {
++    struct audio_stream_in stream;
++    struct audio_stream_in* amazon_stream;
++    struct wrapper_audio_device* adev;
++    bool beam_capable;
++    bool beam_off;
++    struct mic_beam* beam;
++    uint64_t beam_frames;
++};
++
++static struct wrapper_stream_in* wrap_in(struct audio_stream_in* stream) {
++    return (struct wrapper_stream_in*)stream;
++}
++
++static const struct wrapper_stream_in* wrap_in_const(const struct audio_stream_in* stream) {
++    return (const struct wrapper_stream_in*)stream;
++}
++
++static struct wrapper_stream_in* wrap_in_common(struct audio_stream* stream) {
++    return (struct wrapper_stream_in*)stream;
++}
++
++static const struct wrapper_stream_in* wrap_in_common_const(const struct audio_stream* stream) {
++    return (const struct wrapper_stream_in*)stream;
++}
++
++static void in_close_beam(struct wrapper_stream_in* in) {
++    if (in->beam) {
++        mic_beam_close(in->beam);
++        in->beam = NULL;
++    }
++}
++
++static uint32_t in_get_sample_rate(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_sample_rate(&in->amazon_stream->common);
++}
++
++static int in_set_sample_rate(struct audio_stream* stream, uint32_t rate) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++    return in->amazon_stream->common.set_sample_rate(&in->amazon_stream->common, rate);
++}
++
++static size_t in_get_buffer_size(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_buffer_size(&in->amazon_stream->common);
++}
++
++static audio_channel_mask_t in_get_channels(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_channels(&in->amazon_stream->common);
++}
++
++static audio_format_t in_get_format(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_format(&in->amazon_stream->common);
++}
++
++static int in_set_format(struct audio_stream* stream, audio_format_t format) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++    return in->amazon_stream->common.set_format(&in->amazon_stream->common, format);
++}
++
++static int in_standby(struct audio_stream* stream) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++
++    in_close_beam(in);
++    in->beam_off = false;
++    return in->amazon_stream->common.standby(&in->amazon_stream->common);
++}
++
++static int in_dump(const struct audio_stream* stream, int fd) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.dump(&in->amazon_stream->common, fd);
++}
++
++static audio_devices_t in_get_device(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_device(&in->amazon_stream->common);
++}
++
++static int in_set_device(struct audio_stream* stream, audio_devices_t device) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++    return in->amazon_stream->common.set_device(&in->amazon_stream->common, device);
++}
++
++static int in_set_parameters(struct audio_stream* stream, const char* kv_pairs) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++    return in->amazon_stream->common.set_parameters(&in->amazon_stream->common, kv_pairs);
++}
++
++static char* in_get_parameters(const struct audio_stream* stream, const char* keys) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_parameters(&in->amazon_stream->common, keys);
++}
++
++static int in_add_audio_effect(const struct audio_stream* stream, effect_handle_t effect) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.add_audio_effect(&in->amazon_stream->common, effect);
++}
++
++static int in_remove_audio_effect(const struct audio_stream* stream, effect_handle_t effect) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.remove_audio_effect(&in->amazon_stream->common, effect);
++}
++
++static int in_set_gain(struct audio_stream_in* stream, float gain) {
++    struct wrapper_stream_in* in = wrap_in(stream);
++    return in->amazon_stream->set_gain(in->amazon_stream, gain);
++}
++
++static ssize_t in_read(struct audio_stream_in* stream, void* buffer, size_t bytes) {
++    struct wrapper_stream_in* in = wrap_in(stream);
++
++    if (in->beam_capable && !in->beam && !in->beam_off) {
++        if (property_get_bool("persist.biscuit.mic_beam", true)) {
++            in->beam = mic_beam_open(in->adev->beam_model);
++            if (in->beam) {
++                ALOGI("reading the microphone array: the speaker is removed while it plays");
++            }
++        }
++        /* Off, or the array would not open: the Fire OS HAL until standby. */
++        if (!in->beam) in->beam_off = true;
++    }
++    if (in->beam) {
++        ssize_t frames = mic_beam_read(in->beam, buffer, bytes / sizeof(int16_t));
++        if (frames < 0) {
++            in_close_beam(in);
++            in->beam_off = true;
++            memset(buffer, 0, bytes);
++            return bytes;
++        }
++        if (in->adev->mic_muted) memset(buffer, 0, bytes);
++        in->beam_frames += frames;
++        return bytes;
++    }
++    return in->amazon_stream->read(in->amazon_stream, buffer, bytes);
++}
++
++static uint32_t in_get_input_frames_lost(struct audio_stream_in* stream) {
++    struct wrapper_stream_in* in = wrap_in(stream);
++    if (in->beam) return 0;
++    return in->amazon_stream->get_input_frames_lost(in->amazon_stream);
++}
++
++static int in_get_capture_position(const struct audio_stream_in* stream,
++                                   int64_t* frames, int64_t* time) {
++    const struct wrapper_stream_in* in = wrap_in_const(stream);
++
++    if (in->beam) {
++        struct timespec now;
++        if (!frames || !time) return -EINVAL;
++        clock_gettime(CLOCK_MONOTONIC, &now);
++        *frames = (int64_t)in->beam_frames;
++        *time = now.tv_sec * 1000000000LL + now.tv_nsec;
++        return 0;
++    }
++    if (!in->amazon_stream->get_capture_position) return -ENOSYS;
++    return in->amazon_stream->get_capture_position(in->amazon_stream, frames, time);
++}
++
+ static int adev_open_input_stream(struct audio_hw_device* dev,
+                                   audio_io_handle_t handle,
+                                   audio_devices_t devices,
+@@ -468,15 +639,71 @@
+                                   audio_input_flags_t flags,
+                                   const char* address,
+                                   audio_source_t source) {
+-    struct audio_hw_device* a = real_dev(dev);
+-    return a->open_input_stream(a, handle, devices, config, stream_in, flags,
+-                                address, source);
++    struct wrapper_audio_device* adev = (struct wrapper_audio_device*)dev;
++    struct audio_hw_device* a = adev->amazon_device;
++    struct audio_stream_in* amazon_stream = NULL;
++    struct wrapper_stream_in* in;
++    int status;
++
++    status = a->open_input_stream(a, handle, devices, config, &amazon_stream, flags,
++                                  address, source);
++    if (status != 0) {
++        return status;
++    }
++    if (!amazon_stream) {
++        return -ENODEV;
++    }
++
++    in = calloc(1, sizeof(*in));
++    if (!in) {
++        a->close_input_stream(a, amazon_stream);
++        return -ENOMEM;
++    }
++
++    in->amazon_stream = amazon_stream;
++    in->adev = adev;
++    in->stream = *amazon_stream;
++
++    // ponytail: every vendor callback must receive the real Fire OS stream.
++    if (amazon_stream->common.get_sample_rate) in->stream.common.get_sample_rate = in_get_sample_rate;
++    if (amazon_stream->common.set_sample_rate) in->stream.common.set_sample_rate = in_set_sample_rate;
++    if (amazon_stream->common.get_buffer_size) in->stream.common.get_buffer_size = in_get_buffer_size;
++    if (amazon_stream->common.get_channels) in->stream.common.get_channels = in_get_channels;
++    if (amazon_stream->common.get_format) in->stream.common.get_format = in_get_format;
++    if (amazon_stream->common.set_format) in->stream.common.set_format = in_set_format;
++    if (amazon_stream->common.standby) in->stream.common.standby = in_standby;
++    if (amazon_stream->common.dump) in->stream.common.dump = in_dump;
++    if (amazon_stream->common.get_device) in->stream.common.get_device = in_get_device;
++    if (amazon_stream->common.set_device) in->stream.common.set_device = in_set_device;
++    if (amazon_stream->common.set_parameters) in->stream.common.set_parameters = in_set_parameters;
++    if (amazon_stream->common.get_parameters) in->stream.common.get_parameters = in_get_parameters;
++    if (amazon_stream->common.add_audio_effect) in->stream.common.add_audio_effect = in_add_audio_effect;
++    if (amazon_stream->common.remove_audio_effect) in->stream.common.remove_audio_effect = in_remove_audio_effect;
++    if (amazon_stream->set_gain) in->stream.set_gain = in_set_gain;
++    if (amazon_stream->read) in->stream.read = in_read;
++    if (amazon_stream->get_input_frames_lost) in->stream.get_input_frames_lost = in_get_input_frames_lost;
++    in->stream.get_capture_position = in_get_capture_position;
++
++    in->beam_capable = adev->beam_model && amazon_stream->read &&
++            amazon_stream->common.standby &&
++            amazon_stream->common.get_sample_rate(&amazon_stream->common) == 16000 &&
++            audio_channel_count_from_in_mask(
++                    amazon_stream->common.get_channels(&amazon_stream->common)) == 1 &&
++            amazon_stream->common.get_format(&amazon_stream->common) == AUDIO_FORMAT_PCM_16_BIT &&
++            (devices & AUDIO_DEVICE_IN_BUILTIN_MIC & ~AUDIO_DEVICE_BIT_IN) != 0;
++
++    *stream_in = &in->stream;
++    return 0;
+ }
+ 
+ static void adev_close_input_stream(struct audio_hw_device* dev,
+                                     struct audio_stream_in* stream_in) {
+-    struct audio_hw_device* a = real_dev(dev);
+-    a->close_input_stream(a, stream_in);
++    struct wrapper_audio_device* adev = (struct wrapper_audio_device*)dev;
++    struct wrapper_stream_in* in = wrap_in(stream_in);
++
++    in_close_beam(in);
++    adev->amazon_device->close_input_stream(adev->amazon_device, in->amazon_stream);
++    free(in);
+ }
+ 
+ static int adev_dump(const struct audio_hw_device* dev, int fd) {
+@@ -697,6 +924,7 @@
+         status = adev->amazon_device->common.close(
+                 (struct hw_device_t*)adev->amazon_device);
+     }
++    mic_beam_model_free(adev->beam_model);
+     free(adev);
+     return status;
+ }
+@@ -768,6 +996,7 @@
+     adev->device.common.module = (struct hw_module_t*)module;
+     adev->device.common.close = adev_close;
+     wrap_device_methods(adev);
++    adev->beam_model = mic_beam_model_create();
+     *device = &adev->device.common;
+     return 0;
+ 
