@@ -14,6 +14,18 @@
 #include <time.h>
 #include <unistd.h>
 
+/*
+ * Boards carry either an AMS TSL2584TSV, read through IIO (illuminance0_input),
+ * or a TAOS TSL2540 on i2c0, read through its sysfs group (als_lux) and
+ * powered with als_power_state while the sensor is active.
+ */
+#ifndef IIO_DIR
+#define IIO_DIR "/sys/bus/iio/devices"
+#endif
+#ifndef TSL2540_DIR
+#define TSL2540_DIR "/sys/bus/i2c/devices/0-0039"
+#endif
+
 #define LIGHT_HANDLE 1
 #define DEFAULT_DELAY_NS 500000000LL
 #define MIN_DELAY_US 200000
@@ -24,6 +36,7 @@ struct biscuit_poll_device {
     int active;
     int64_t delay_ns;
     char lux_path[PATH_MAX];
+    int tsl2540;
 };
 
 static const struct sensor_t sSensorList[] = {{
@@ -45,36 +58,51 @@ static const struct sensor_t sSensorList[] = {{
     .reserved = {0},
 }};
 
-static int find_lux_path(char *out, size_t out_len)
+static int find_lux_path(char *out, size_t out_len, int *tsl2540)
 {
-    const char *fixed = "/sys/bus/iio/devices/iio:device0/illuminance0_input";
+    const char *fixed = IIO_DIR "/iio:device0/illuminance0_input";
+    *tsl2540 = 0;
     if (access(fixed, R_OK) == 0) {
         strlcpy(out, fixed, out_len);
         return 0;
     }
 
-    DIR *dir = opendir("/sys/bus/iio/devices");
-    if (!dir) return -errno;
-
-    struct dirent *de;
-    while ((de = readdir(dir)) != NULL) {
-        if (strncmp(de->d_name, "iio:device", 10) != 0) continue;
-        char path[PATH_MAX];
-        snprintf(path, sizeof(path), "/sys/bus/iio/devices/%s/illuminance0_input", de->d_name);
-        if (access(path, R_OK) == 0) {
-            strlcpy(out, path, out_len);
-            closedir(dir);
-            return 0;
+    DIR *dir = opendir(IIO_DIR);
+    if (dir) {
+        struct dirent *de;
+        while ((de = readdir(dir)) != NULL) {
+            if (strncmp(de->d_name, "iio:device", 10) != 0) continue;
+            char path[PATH_MAX];
+            snprintf(path, sizeof(path), IIO_DIR "/%s/illuminance0_input", de->d_name);
+            if (access(path, R_OK) == 0) {
+                strlcpy(out, path, out_len);
+                closedir(dir);
+                return 0;
+            }
         }
+        closedir(dir);
     }
 
-    closedir(dir);
+    if (access(TSL2540_DIR "/als_lux", R_OK) == 0) {
+        strlcpy(out, TSL2540_DIR "/als_lux", out_len);
+        *tsl2540 = 1;
+        return 0;
+    }
     return -ENOENT;
+}
+
+static void set_tsl2540_power(int on)
+{
+    int fd = open(TSL2540_DIR "/als_power_state", O_WRONLY | O_CLOEXEC);
+    if (fd < 0 || write(fd, on ? "1" : "0", 1) != 1)
+        ALOGW("cannot power the TSL2540 %s: %s", on ? "on" : "off", strerror(errno));
+    if (fd >= 0) close(fd);
 }
 
 static int read_lux(struct biscuit_poll_device *dev, float *lux)
 {
-    if (!dev->lux_path[0] && find_lux_path(dev->lux_path, sizeof(dev->lux_path)) < 0)
+    if (!dev->lux_path[0] &&
+            find_lux_path(dev->lux_path, sizeof(dev->lux_path), &dev->tsl2540) < 0)
         return -ENOENT;
 
     FILE *f = fopen(dev->lux_path, "r");
@@ -111,7 +139,13 @@ static int poll__activate(struct sensors_poll_device_t *d, int handle, int enabl
     if (handle != LIGHT_HANDLE) return -EINVAL;
     struct biscuit_poll_device *dev = (struct biscuit_poll_device *)d;
     pthread_mutex_lock(&dev->lock);
-    dev->active = enabled ? 1 : 0;
+    enabled = enabled ? 1 : 0;
+    if (enabled != dev->active) {
+        if (!dev->lux_path[0])
+            find_lux_path(dev->lux_path, sizeof(dev->lux_path), &dev->tsl2540);
+        if (dev->tsl2540) set_tsl2540_power(enabled);
+    }
+    dev->active = enabled;
     pthread_mutex_unlock(&dev->lock);
     return 0;
 }
@@ -155,6 +189,7 @@ static int poll__poll(struct sensors_poll_device_t *d, sensors_event_t *data, in
 static int poll__close(struct hw_device_t *dev)
 {
     struct biscuit_poll_device *poll = (struct biscuit_poll_device *)dev;
+    if (poll->active && poll->tsl2540) set_tsl2540_power(0);
     pthread_mutex_destroy(&poll->lock);
     free(poll);
     return 0;
@@ -185,7 +220,7 @@ static int open_sensors(const struct hw_module_t *module, const char *name,
     dev->device.poll = poll__poll;
     dev->delay_ns = DEFAULT_DELAY_NS;
     pthread_mutex_init(&dev->lock, NULL);
-    find_lux_path(dev->lux_path, sizeof(dev->lux_path));
+    find_lux_path(dev->lux_path, sizeof(dev->lux_path), &dev->tsl2540);
 
     *device = &dev->device.common;
     return 0;

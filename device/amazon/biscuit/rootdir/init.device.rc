@@ -2,6 +2,8 @@
 on boot
     chown root audio /sys/devices/soc/1000b000.pinctrl/mt_gpio
     chmod 0664 /sys/devices/soc/1000b000.pinctrl/mt_gpio
+    # sensors.mt8163 (system_server) powers the TSL2540 ambient light sensor.
+    chown system system /sys/bus/i2c/devices/0-0039/als_power_state
 
 service audio_init /system/bin/sh /system/etc/audio_init.sh
     class late_start
