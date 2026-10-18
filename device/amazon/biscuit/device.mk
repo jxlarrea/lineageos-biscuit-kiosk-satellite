@@ -100,3 +100,8 @@ PRODUCT_COPY_FILES += \
 
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.biscuit.action_broadcast=1
+
+# Nothing to animate on a 1x1 display, and the animation crashed dividing by
+# zero on it.
+PRODUCT_PROPERTY_OVERRIDES += \
+    debug.sf.nobootanimation=1

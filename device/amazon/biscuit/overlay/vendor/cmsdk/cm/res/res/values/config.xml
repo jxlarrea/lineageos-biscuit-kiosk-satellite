@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LiveDisplay is left out: it tunes a screen this device does not
+         have, and it crashes the system at boot publishing a Quick Settings
+         tile when SystemUI is missing. -->
+    <string-array name="config_externalCMServices">
+        <item>org.cyanogenmod.platform.internal.CMStatusBarManagerService</item>
+        <item>org.cyanogenmod.platform.internal.ProfileManagerService</item>
+        <item>org.cyanogenmod.platform.internal.CMTelephonyManagerService</item>
+        <item>org.cyanogenmod.platform.internal.CMHardwareService</item>
+        <item>org.cyanogenmod.platform.internal.PerformanceManagerService</item>
+        <item>org.cyanogenmod.platform.internal.WeatherManagerServiceBroker</item>
+        <item>org.cyanogenmod.platform.internal.CMAudioServiceBroker</item>
+    </string-array>
+</resources>
