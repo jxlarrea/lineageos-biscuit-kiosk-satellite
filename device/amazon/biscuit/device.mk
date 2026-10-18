@@ -101,6 +101,15 @@ PRODUCT_COPY_FILES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.biscuit.action_broadcast=1
 
+# Without these every app, system_server included, gets ART's 16 MB default
+# heap limit.
+$(call inherit-product, frameworks/native/build/phone-hdpi-512-dalvik-heap.mk)
+
+# A 512 MB device: fewer cached processes and lighter framework defaults.
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.config.low_ram=true \
+    ro.sys.fw.bg_apps_limit=8
+
 # Nothing to animate on a 1x1 display, and the animation crashed dividing by
 # zero on it.
 PRODUCT_PROPERTY_OVERRIDES += \

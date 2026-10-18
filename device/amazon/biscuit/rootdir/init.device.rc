@@ -14,6 +14,8 @@ service audio_init /system/bin/sh /system/etc/audio_init.sh
 on property:sys.boot_completed=1
     start biscuit-ledd
     start ks_install
+    # The perf profiling daemon only collects for Google's internal builds.
+    stop perfprofd
 
 # Kiosk Satellite Edition: installs Kiosk Satellite on first boot and keeps its
 # grants in place. setprop persist.biscuit.ks_install 0 turns it off.
