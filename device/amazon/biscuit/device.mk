@@ -95,6 +95,13 @@ PRODUCT_CHARACTERISTICS := nosdcard,headless
 PRODUCT_PACKAGES += \
     curl
 
+# The WebView APK is left out (see empty-launcher), but Android 7 lists its
+# support library in public.libraries.txt and cannot create any app class
+# loader, the system server's included, without it.
+PRODUCT_PACKAGES += \
+    libwebviewchromium_loader \
+    libwebviewchromium_plat_support
+
 PRODUCT_COPY_FILES += \
     device/amazon/biscuit/rootdir/ks-install.sh:$(TARGET_COPY_OUT_SYSTEM)/etc/ks-install.sh
 
