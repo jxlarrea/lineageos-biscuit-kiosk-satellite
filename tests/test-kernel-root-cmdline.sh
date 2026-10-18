@@ -11,7 +11,7 @@ STAGE="$ROOT/scripts/stage-tree.sh"
 BOARD="$ROOT/device/amazon/biscuit/BoardConfig.mk"
 
 for line in \
-  '+CONFIG_CMDLINE="console=tty0 console=ttyMT0,921600n1 root=/dev/ram rdinit=/init vmalloc=496M slub_max_order=0 slub_debug=O loglevel=8 initcall_debug gpt bootopt=64S3,32N2,32N2 androidboot.hardware=mt8163 androidboot.selinux=permissive buildvariant=userdebug"' \
+  '+CONFIG_CMDLINE="console=tty0 console=ttyMT0,921600n1 root=/dev/ram rdinit=/init vmalloc=496M slub_max_order=0 slub_debug=O loglevel=4 gpt bootopt=64S3,32N2,32N2 androidboot.hardware=mt8163 androidboot.selinux=permissive buildvariant=userdebug"' \
   '+# CONFIG_CMDLINE_FROM_BOOTLOADER is not set' \
   '+CONFIG_CMDLINE_FORCE=y'; do
   grep -Fqx "$line" "$PATCH"
