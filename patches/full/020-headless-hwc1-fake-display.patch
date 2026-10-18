@@ -22,7 +22,7 @@
 +            abort();
 +        }
 +        ALOGW("No framebuffer; using Biscuit headless fake primary display");
-@@ -191,0 +203,12 @@
+@@ -191,0 +203,15 @@
 +    } else if (headlessNoGpu) {
 +        DisplayData& disp(mDisplayData[HWC_DISPLAY_PRIMARY]);
 +        disp.connected = true;
@@ -32,7 +32,10 @@
 +        config.height = 1;
 +        config.xdpi = ACONFIGURATION_DENSITY_TV;
 +        config.ydpi = ACONFIGURATION_DENSITY_TV;
-+        config.refresh = nsecs_t(1e9 / 60);
++        // Nothing is ever shown: one frame a second keeps anything still
++        // animating (SystemUI, a launcher) from waking SurfaceFlinger 60
++        // times a second.
++        config.refresh = nsecs_t(1e9 / 1);
 +        disp.configs.push_back(config);
 +        disp.currentConfig = 0;
 @@ -906 +929 @@
