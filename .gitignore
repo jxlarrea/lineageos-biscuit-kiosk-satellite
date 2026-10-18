@@ -6,3 +6,6 @@ ota_biscuit_cm14.1_*.zip.sha256
 
 # Local planning documents
 *.prd.md
+.internal
+.claude/
+AGENTS.md
