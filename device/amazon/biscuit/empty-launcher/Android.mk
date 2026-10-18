@@ -70,4 +70,13 @@ LOCAL_OVERRIDES_PACKAGES += \
 # treats a missing keyguard as a device without one.
 LOCAL_OVERRIDES_PACKAGES += \
     SystemUI
+# Telephony. The device has no radio (ro.radio.noril), and the phone process
+# and the providers it pulls in only cost RAM.
+LOCAL_OVERRIDES_PACKAGES += \
+    BlockedNumberProvider \
+    ContactsProvider \
+    MmsService \
+    Telecom \
+    TelephonyProvider \
+    TeleService
 include $(BUILD_PACKAGE)
