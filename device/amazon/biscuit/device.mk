@@ -85,6 +85,10 @@ PRODUCT_COPY_FILES += \
     device/amazon/biscuit/biscuit-service/animations/alexa_thinking.animation:$(TARGET_COPY_OUT_SYSTEM)/etc/biscuit-ledd/alexa_thinking.animation \
     device/amazon/biscuit/biscuit-service/animations/boot-complete-green.animation:$(TARGET_COPY_OUT_SYSTEM)/etc/biscuit-ledd/boot-complete-green.animation
 
+# The wallpaper service's only wallpaper lives in SystemUI, which a headless
+# build leaves out.
+DEVICE_PACKAGE_OVERLAYS := device/amazon/biscuit/overlay $(DEVICE_PACKAGE_OVERLAYS)
+
 PRODUCT_CHARACTERISTICS := nosdcard,headless
 
 # Kiosk Satellite Edition.

@@ -66,4 +66,8 @@ LOCAL_OVERRIDES_PACKAGES += \
     WAPPushManager \
     WeatherManagerService \
     WeatherProvider
+# No status bar, navigation bar, keyguard or volume dialog to draw. Android
+# treats a missing keyguard as a device without one.
+LOCAL_OVERRIDES_PACKAGES += \
+    SystemUI
 include $(BUILD_PACKAGE)
