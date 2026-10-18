@@ -70,6 +70,7 @@ Kiosk Satellite itself used 1.7% of one core idle, measured per thread over a mi
 
 ## Tried and dropped
 
+- Amazon's audio processor (ASP). It never starts on this build because the generated vendor makefile copies `audio-algorithms` with `$(LOCAL_PATH)`, which product makefiles expand too late, so its 40 config files never ship. With them in place and a stub `liblipc.so` (Amazon's needs D-Bus), it runs. Its speaker pipeline then outputs silence, because Amazon's volume service never reports the volume, so the speaker pipeline needs passthrough. Its microphone pipeline (seven mics, echo cancellation against the hardware loopback) worked, but the wake word failed with music at 90% volume, where Kiosk Satellite's own echo cancellation with the preamp at 72 still triggers at 100%. Left off: the config files stay unshipped.
 - Compiling the framework and system apps at build time (`WITH_DEXPREOPT`): it would free about 135 MB of `/data`, but Android 7.1's host `dex2oat` cannot map the boot image at its fixed address on current host kernels with address space randomization on.
 - Stopping drmserver, mediadrmserver and cameraserver: about 5 MB together. Android 7's DRM client waits forever for drmserver, which local media playback can hit, and camera queries fail instead of returning no cameras without cameraserver.
 
