@@ -1,41 +1,312 @@
---- /dev/null
-+++ b/hardware/amazon/audio/mic_beam.h
-@@ -0,0 +1,35 @@
+--- a/hardware/amazon/audio/Android.mk
++++ b/hardware/amazon/audio/Android.mk
+@@ -4,7 +4,7 @@
+ LOCAL_MODULE := audio.primary.mt8163
+ LOCAL_MODULE_RELATIVE_PATH := hw
+ LOCAL_C_INCLUDES := external/tinyalsa/include
+-LOCAL_SRC_FILES := audio_wrapper.c
++LOCAL_SRC_FILES := audio_wrapper.c mic_beam.c
+ LOCAL_SHARED_LIBRARIES := libcutils libhardware liblog libtinyalsa
+ LOCAL_MODULE_TAGS := optional
+ LOCAL_CFLAGS := -Wall -Werror
+--- a/hardware/amazon/audio/audio_wrapper.c
++++ b/hardware/amazon/audio/audio_wrapper.c
+@@ -17,12 +17,16 @@
+ #include <log/log.h>
+ #include <tinyalsa/asoundlib.h>
+ 
++#include "mic_beam.h"
++
+ #define CARD 0
+ 
+ struct wrapper_audio_device {
+     struct audio_hw_device device;
+     struct audio_hw_device* amazon_device;
+     bool mic_muted;
++    struct mic_beam_model* beam_model;
++    bool vendor_capture_ready;
+ };
+ 
+ /*
+@@ -460,6 +464,185 @@
+     free(out);
+ }
+ 
 +/*
-+ * SPDX-License-Identifier: Apache-2.0
++ * Input streams. The voice capture Android opens (16 kHz mono from the
++ * built-in microphones) reads the microphone array itself through mic_beam.c,
++ * which removes the speaker from it. Every other capture, and this one when
++ * persist.biscuit.mic_beam is 0 or the array cannot be opened, goes to the
++ * Fire OS HAL, which hands Android microphone 0 unprocessed.
 + */
++struct wrapper_stream_in {
++    struct audio_stream_in stream;
++    struct audio_stream_in* amazon_stream;
++    struct wrapper_audio_device* adev;
++    bool beam_capable;
++    bool beam_off;
++    struct mic_beam* beam;
++    uint64_t beam_frames;
++};
 +
-+#ifndef BISCUIT_MIC_BEAM_H
-+#define BISCUIT_MIC_BEAM_H
++static struct wrapper_stream_in* wrap_in(struct audio_stream_in* stream) {
++    return (struct wrapper_stream_in*)stream;
++}
 +
-+#include <stddef.h>
-+#include <stdint.h>
-+#include <sys/types.h>
++static const struct wrapper_stream_in* wrap_in_const(const struct audio_stream_in* stream) {
++    return (const struct wrapper_stream_in*)stream;
++}
 +
-+/*
-+ * Reads the Echo Dot's microphone array directly and removes the speaker
-+ * from it. See mic_beam.c.
-+ */
++static struct wrapper_stream_in* wrap_in_common(struct audio_stream* stream) {
++    return (struct wrapper_stream_in*)stream;
++}
 +
-+/* What has been learned about the speaker. Outlives each capture session. */
-+struct mic_beam_model;
++static const struct wrapper_stream_in* wrap_in_common_const(const struct audio_stream* stream) {
++    return (const struct wrapper_stream_in*)stream;
++}
 +
-+/* One capture session, holding the microphone PCM open. */
-+struct mic_beam;
++static void in_close_beam(struct wrapper_stream_in* in) {
++    if (in->beam) {
++        mic_beam_close(in->beam);
++        in->beam = NULL;
++    }
++}
 +
-+struct mic_beam_model* mic_beam_model_create(void);
-+void mic_beam_model_free(struct mic_beam_model* model);
++static uint32_t in_get_sample_rate(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_sample_rate(&in->amazon_stream->common);
++}
 +
-+/* Opens the microphone PCM. NULL when it cannot, such as when it is busy. */
-+struct mic_beam* mic_beam_open(struct mic_beam_model* model);
++static int in_set_sample_rate(struct audio_stream* stream, uint32_t rate) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++    return in->amazon_stream->common.set_sample_rate(&in->amazon_stream->common, rate);
++}
 +
-+/* Fills out with frames of 16 kHz mono. Blocks like a PCM read. Returns
-+ * frames or a negative errno. */
-+ssize_t mic_beam_read(struct mic_beam* beam, int16_t* out, size_t frames);
++static size_t in_get_buffer_size(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_buffer_size(&in->amazon_stream->common);
++}
 +
-+void mic_beam_close(struct mic_beam* beam);
++static audio_channel_mask_t in_get_channels(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_channels(&in->amazon_stream->common);
++}
 +
-+#endif
++static audio_format_t in_get_format(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_format(&in->amazon_stream->common);
++}
++
++static int in_set_format(struct audio_stream* stream, audio_format_t format) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++    return in->amazon_stream->common.set_format(&in->amazon_stream->common, format);
++}
++
++static int in_standby(struct audio_stream* stream) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++
++    in_close_beam(in);
++    in->beam_off = false;
++    return in->amazon_stream->common.standby(&in->amazon_stream->common);
++}
++
++static int in_dump(const struct audio_stream* stream, int fd) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.dump(&in->amazon_stream->common, fd);
++}
++
++static audio_devices_t in_get_device(const struct audio_stream* stream) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_device(&in->amazon_stream->common);
++}
++
++static int in_set_device(struct audio_stream* stream, audio_devices_t device) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++    return in->amazon_stream->common.set_device(&in->amazon_stream->common, device);
++}
++
++static int in_set_parameters(struct audio_stream* stream, const char* kv_pairs) {
++    struct wrapper_stream_in* in = wrap_in_common(stream);
++    return in->amazon_stream->common.set_parameters(&in->amazon_stream->common, kv_pairs);
++}
++
++static char* in_get_parameters(const struct audio_stream* stream, const char* keys) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.get_parameters(&in->amazon_stream->common, keys);
++}
++
++static int in_add_audio_effect(const struct audio_stream* stream, effect_handle_t effect) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.add_audio_effect(&in->amazon_stream->common, effect);
++}
++
++static int in_remove_audio_effect(const struct audio_stream* stream, effect_handle_t effect) {
++    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
++    return in->amazon_stream->common.remove_audio_effect(&in->amazon_stream->common, effect);
++}
++
++static int in_set_gain(struct audio_stream_in* stream, float gain) {
++    struct wrapper_stream_in* in = wrap_in(stream);
++    return in->amazon_stream->set_gain(in->amazon_stream, gain);
++}
++
++static ssize_t in_read(struct audio_stream_in* stream, void* buffer, size_t bytes) {
++    struct wrapper_stream_in* in = wrap_in(stream);
++
++    if (in->beam_capable && !in->beam && !in->beam_off) {
++        if (property_get_bool("persist.biscuit.mic_beam", true)) {
++            if (!in->adev->vendor_capture_ready) {
++                /*
++                 * The Fire OS HAL applies its mixer defaults, the microphone
++                 * inputs and preamp among them, when it first opens a stream.
++                 * Until then the ADCs deliver silence, so it opens the
++                 * microphones once, for one buffer, before the array is read.
++                 */
++                in->amazon_stream->read(in->amazon_stream, buffer, bytes);
++                in->amazon_stream->common.standby(&in->amazon_stream->common);
++                in->adev->vendor_capture_ready = true;
++            }
++            in->beam = mic_beam_open(in->adev->beam_model);
++            if (in->beam) {
++                ALOGI("reading the microphone array: the speaker is removed while it plays");
++            }
++        }
++        /* Off, or the array would not open: the Fire OS HAL until standby. */
++        if (!in->beam) in->beam_off = true;
++    }
++    if (in->beam) {
++        ssize_t frames = mic_beam_read(in->beam, buffer, bytes / sizeof(int16_t));
++        if (frames < 0) {
++            in_close_beam(in);
++            in->beam_off = true;
++            memset(buffer, 0, bytes);
++            return bytes;
++        }
++        if (in->adev->mic_muted) memset(buffer, 0, bytes);
++        in->beam_frames += frames;
++        return bytes;
++    }
++    return in->amazon_stream->read(in->amazon_stream, buffer, bytes);
++}
++
++static uint32_t in_get_input_frames_lost(struct audio_stream_in* stream) {
++    struct wrapper_stream_in* in = wrap_in(stream);
++    if (in->beam) return 0;
++    return in->amazon_stream->get_input_frames_lost(in->amazon_stream);
++}
++
++static int in_get_capture_position(const struct audio_stream_in* stream,
++                                   int64_t* frames, int64_t* time) {
++    const struct wrapper_stream_in* in = wrap_in_const(stream);
++
++    if (in->beam) {
++        struct timespec now;
++        if (!frames || !time) return -EINVAL;
++        clock_gettime(CLOCK_MONOTONIC, &now);
++        *frames = (int64_t)in->beam_frames;
++        *time = now.tv_sec * 1000000000LL + now.tv_nsec;
++        return 0;
++    }
++    if (!in->amazon_stream->get_capture_position) return -ENOSYS;
++    return in->amazon_stream->get_capture_position(in->amazon_stream, frames, time);
++}
++
+ static int adev_open_input_stream(struct audio_hw_device* dev,
+                                   audio_io_handle_t handle,
+                                   audio_devices_t devices,
+@@ -468,15 +651,71 @@
+                                   audio_input_flags_t flags,
+                                   const char* address,
+                                   audio_source_t source) {
+-    struct audio_hw_device* a = real_dev(dev);
+-    return a->open_input_stream(a, handle, devices, config, stream_in, flags,
+-                                address, source);
++    struct wrapper_audio_device* adev = (struct wrapper_audio_device*)dev;
++    struct audio_hw_device* a = adev->amazon_device;
++    struct audio_stream_in* amazon_stream = NULL;
++    struct wrapper_stream_in* in;
++    int status;
++
++    status = a->open_input_stream(a, handle, devices, config, &amazon_stream, flags,
++                                  address, source);
++    if (status != 0) {
++        return status;
++    }
++    if (!amazon_stream) {
++        return -ENODEV;
++    }
++
++    in = calloc(1, sizeof(*in));
++    if (!in) {
++        a->close_input_stream(a, amazon_stream);
++        return -ENOMEM;
++    }
++
++    in->amazon_stream = amazon_stream;
++    in->adev = adev;
++    in->stream = *amazon_stream;
++
++    // ponytail: every vendor callback must receive the real Fire OS stream.
++    if (amazon_stream->common.get_sample_rate) in->stream.common.get_sample_rate = in_get_sample_rate;
++    if (amazon_stream->common.set_sample_rate) in->stream.common.set_sample_rate = in_set_sample_rate;
++    if (amazon_stream->common.get_buffer_size) in->stream.common.get_buffer_size = in_get_buffer_size;
++    if (amazon_stream->common.get_channels) in->stream.common.get_channels = in_get_channels;
++    if (amazon_stream->common.get_format) in->stream.common.get_format = in_get_format;
++    if (amazon_stream->common.set_format) in->stream.common.set_format = in_set_format;
++    if (amazon_stream->common.standby) in->stream.common.standby = in_standby;
++    if (amazon_stream->common.dump) in->stream.common.dump = in_dump;
++    if (amazon_stream->common.get_device) in->stream.common.get_device = in_get_device;
++    if (amazon_stream->common.set_device) in->stream.common.set_device = in_set_device;
++    if (amazon_stream->common.set_parameters) in->stream.common.set_parameters = in_set_parameters;
++    if (amazon_stream->common.get_parameters) in->stream.common.get_parameters = in_get_parameters;
++    if (amazon_stream->common.add_audio_effect) in->stream.common.add_audio_effect = in_add_audio_effect;
++    if (amazon_stream->common.remove_audio_effect) in->stream.common.remove_audio_effect = in_remove_audio_effect;
++    if (amazon_stream->set_gain) in->stream.set_gain = in_set_gain;
++    if (amazon_stream->read) in->stream.read = in_read;
++    if (amazon_stream->get_input_frames_lost) in->stream.get_input_frames_lost = in_get_input_frames_lost;
++    in->stream.get_capture_position = in_get_capture_position;
++
++    in->beam_capable = adev->beam_model && amazon_stream->read &&
++            amazon_stream->common.standby &&
++            amazon_stream->common.get_sample_rate(&amazon_stream->common) == 16000 &&
++            audio_channel_count_from_in_mask(
++                    amazon_stream->common.get_channels(&amazon_stream->common)) == 1 &&
++            amazon_stream->common.get_format(&amazon_stream->common) == AUDIO_FORMAT_PCM_16_BIT &&
++            (devices & AUDIO_DEVICE_IN_BUILTIN_MIC & ~AUDIO_DEVICE_BIT_IN) != 0;
++
++    *stream_in = &in->stream;
++    return 0;
+ }
+ 
+ static void adev_close_input_stream(struct audio_hw_device* dev,
+                                     struct audio_stream_in* stream_in) {
+-    struct audio_hw_device* a = real_dev(dev);
+-    a->close_input_stream(a, stream_in);
++    struct wrapper_audio_device* adev = (struct wrapper_audio_device*)dev;
++    struct wrapper_stream_in* in = wrap_in(stream_in);
++
++    in_close_beam(in);
++    adev->amazon_device->close_input_stream(adev->amazon_device, in->amazon_stream);
++    free(in);
+ }
+ 
+ static int adev_dump(const struct audio_hw_device* dev, int fd) {
+@@ -697,6 +936,7 @@
+         status = adev->amazon_device->common.close(
+                 (struct hw_device_t*)adev->amazon_device);
+     }
++    mic_beam_model_free(adev->beam_model);
+     free(adev);
+     return status;
+ }
+@@ -768,6 +1008,7 @@
+     adev->device.common.module = (struct hw_module_t*)module;
+     adev->device.common.close = adev_close;
+     wrap_device_methods(adev);
++    adev->beam_model = mic_beam_model_create();
+     *device = &adev->device.common;
+     return 0;
+ 
 --- /dev/null
 +++ b/hardware/amazon/audio/mic_beam.c
 @@ -0,0 +1,332 @@
@@ -371,300 +642,41 @@
 +    pcm_close(beam->pcm);
 +    free(beam);
 +}
---- a/hardware/amazon/audio/Android.mk
-+++ b/hardware/amazon/audio/Android.mk
-@@ -4,7 +4,7 @@
- LOCAL_MODULE := audio.primary.mt8163
- LOCAL_MODULE_RELATIVE_PATH := hw
- LOCAL_C_INCLUDES := external/tinyalsa/include
--LOCAL_SRC_FILES := audio_wrapper.c
-+LOCAL_SRC_FILES := audio_wrapper.c mic_beam.c
- LOCAL_SHARED_LIBRARIES := libcutils libhardware liblog libtinyalsa
- LOCAL_MODULE_TAGS := optional
- LOCAL_CFLAGS := -Wall -Werror
---- a/hardware/amazon/audio/audio_wrapper.c
-+++ b/hardware/amazon/audio/audio_wrapper.c
-@@ -17,12 +17,15 @@
- #include <log/log.h>
- #include <tinyalsa/asoundlib.h>
- 
-+#include "mic_beam.h"
-+
- #define CARD 0
- 
- struct wrapper_audio_device {
-     struct audio_hw_device device;
-     struct audio_hw_device* amazon_device;
-     bool mic_muted;
-+    struct mic_beam_model* beam_model;
- };
- 
- /*
-@@ -460,6 +463,174 @@
-     free(out);
- }
- 
+--- /dev/null
++++ b/hardware/amazon/audio/mic_beam.h
+@@ -0,0 +1,35 @@
 +/*
-+ * Input streams. The voice capture Android opens (16 kHz mono from the
-+ * built-in microphones) reads the microphone array itself through mic_beam.c,
-+ * which removes the speaker from it. Every other capture, and this one when
-+ * persist.biscuit.mic_beam is 0 or the array cannot be opened, goes to the
-+ * Fire OS HAL, which hands Android microphone 0 unprocessed.
++ * SPDX-License-Identifier: Apache-2.0
 + */
-+struct wrapper_stream_in {
-+    struct audio_stream_in stream;
-+    struct audio_stream_in* amazon_stream;
-+    struct wrapper_audio_device* adev;
-+    bool beam_capable;
-+    bool beam_off;
-+    struct mic_beam* beam;
-+    uint64_t beam_frames;
-+};
 +
-+static struct wrapper_stream_in* wrap_in(struct audio_stream_in* stream) {
-+    return (struct wrapper_stream_in*)stream;
-+}
++#ifndef BISCUIT_MIC_BEAM_H
++#define BISCUIT_MIC_BEAM_H
 +
-+static const struct wrapper_stream_in* wrap_in_const(const struct audio_stream_in* stream) {
-+    return (const struct wrapper_stream_in*)stream;
-+}
++#include <stddef.h>
++#include <stdint.h>
++#include <sys/types.h>
 +
-+static struct wrapper_stream_in* wrap_in_common(struct audio_stream* stream) {
-+    return (struct wrapper_stream_in*)stream;
-+}
++/*
++ * Reads the Echo Dot's microphone array directly and removes the speaker
++ * from it. See mic_beam.c.
++ */
 +
-+static const struct wrapper_stream_in* wrap_in_common_const(const struct audio_stream* stream) {
-+    return (const struct wrapper_stream_in*)stream;
-+}
++/* What has been learned about the speaker. Outlives each capture session. */
++struct mic_beam_model;
 +
-+static void in_close_beam(struct wrapper_stream_in* in) {
-+    if (in->beam) {
-+        mic_beam_close(in->beam);
-+        in->beam = NULL;
-+    }
-+}
++/* One capture session, holding the microphone PCM open. */
++struct mic_beam;
 +
-+static uint32_t in_get_sample_rate(const struct audio_stream* stream) {
-+    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
-+    return in->amazon_stream->common.get_sample_rate(&in->amazon_stream->common);
-+}
++struct mic_beam_model* mic_beam_model_create(void);
++void mic_beam_model_free(struct mic_beam_model* model);
 +
-+static int in_set_sample_rate(struct audio_stream* stream, uint32_t rate) {
-+    struct wrapper_stream_in* in = wrap_in_common(stream);
-+    return in->amazon_stream->common.set_sample_rate(&in->amazon_stream->common, rate);
-+}
++/* Opens the microphone PCM. NULL when it cannot, such as when it is busy. */
++struct mic_beam* mic_beam_open(struct mic_beam_model* model);
 +
-+static size_t in_get_buffer_size(const struct audio_stream* stream) {
-+    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
-+    return in->amazon_stream->common.get_buffer_size(&in->amazon_stream->common);
-+}
++/* Fills out with frames of 16 kHz mono. Blocks like a PCM read. Returns
++ * frames or a negative errno. */
++ssize_t mic_beam_read(struct mic_beam* beam, int16_t* out, size_t frames);
 +
-+static audio_channel_mask_t in_get_channels(const struct audio_stream* stream) {
-+    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
-+    return in->amazon_stream->common.get_channels(&in->amazon_stream->common);
-+}
++void mic_beam_close(struct mic_beam* beam);
 +
-+static audio_format_t in_get_format(const struct audio_stream* stream) {
-+    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
-+    return in->amazon_stream->common.get_format(&in->amazon_stream->common);
-+}
-+
-+static int in_set_format(struct audio_stream* stream, audio_format_t format) {
-+    struct wrapper_stream_in* in = wrap_in_common(stream);
-+    return in->amazon_stream->common.set_format(&in->amazon_stream->common, format);
-+}
-+
-+static int in_standby(struct audio_stream* stream) {
-+    struct wrapper_stream_in* in = wrap_in_common(stream);
-+
-+    in_close_beam(in);
-+    in->beam_off = false;
-+    return in->amazon_stream->common.standby(&in->amazon_stream->common);
-+}
-+
-+static int in_dump(const struct audio_stream* stream, int fd) {
-+    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
-+    return in->amazon_stream->common.dump(&in->amazon_stream->common, fd);
-+}
-+
-+static audio_devices_t in_get_device(const struct audio_stream* stream) {
-+    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
-+    return in->amazon_stream->common.get_device(&in->amazon_stream->common);
-+}
-+
-+static int in_set_device(struct audio_stream* stream, audio_devices_t device) {
-+    struct wrapper_stream_in* in = wrap_in_common(stream);
-+    return in->amazon_stream->common.set_device(&in->amazon_stream->common, device);
-+}
-+
-+static int in_set_parameters(struct audio_stream* stream, const char* kv_pairs) {
-+    struct wrapper_stream_in* in = wrap_in_common(stream);
-+    return in->amazon_stream->common.set_parameters(&in->amazon_stream->common, kv_pairs);
-+}
-+
-+static char* in_get_parameters(const struct audio_stream* stream, const char* keys) {
-+    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
-+    return in->amazon_stream->common.get_parameters(&in->amazon_stream->common, keys);
-+}
-+
-+static int in_add_audio_effect(const struct audio_stream* stream, effect_handle_t effect) {
-+    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
-+    return in->amazon_stream->common.add_audio_effect(&in->amazon_stream->common, effect);
-+}
-+
-+static int in_remove_audio_effect(const struct audio_stream* stream, effect_handle_t effect) {
-+    const struct wrapper_stream_in* in = wrap_in_common_const(stream);
-+    return in->amazon_stream->common.remove_audio_effect(&in->amazon_stream->common, effect);
-+}
-+
-+static int in_set_gain(struct audio_stream_in* stream, float gain) {
-+    struct wrapper_stream_in* in = wrap_in(stream);
-+    return in->amazon_stream->set_gain(in->amazon_stream, gain);
-+}
-+
-+static ssize_t in_read(struct audio_stream_in* stream, void* buffer, size_t bytes) {
-+    struct wrapper_stream_in* in = wrap_in(stream);
-+
-+    if (in->beam_capable && !in->beam && !in->beam_off) {
-+        if (property_get_bool("persist.biscuit.mic_beam", true)) {
-+            in->beam = mic_beam_open(in->adev->beam_model);
-+            if (in->beam) {
-+                ALOGI("reading the microphone array: the speaker is removed while it plays");
-+            }
-+        }
-+        /* Off, or the array would not open: the Fire OS HAL until standby. */
-+        if (!in->beam) in->beam_off = true;
-+    }
-+    if (in->beam) {
-+        ssize_t frames = mic_beam_read(in->beam, buffer, bytes / sizeof(int16_t));
-+        if (frames < 0) {
-+            in_close_beam(in);
-+            in->beam_off = true;
-+            memset(buffer, 0, bytes);
-+            return bytes;
-+        }
-+        if (in->adev->mic_muted) memset(buffer, 0, bytes);
-+        in->beam_frames += frames;
-+        return bytes;
-+    }
-+    return in->amazon_stream->read(in->amazon_stream, buffer, bytes);
-+}
-+
-+static uint32_t in_get_input_frames_lost(struct audio_stream_in* stream) {
-+    struct wrapper_stream_in* in = wrap_in(stream);
-+    if (in->beam) return 0;
-+    return in->amazon_stream->get_input_frames_lost(in->amazon_stream);
-+}
-+
-+static int in_get_capture_position(const struct audio_stream_in* stream,
-+                                   int64_t* frames, int64_t* time) {
-+    const struct wrapper_stream_in* in = wrap_in_const(stream);
-+
-+    if (in->beam) {
-+        struct timespec now;
-+        if (!frames || !time) return -EINVAL;
-+        clock_gettime(CLOCK_MONOTONIC, &now);
-+        *frames = (int64_t)in->beam_frames;
-+        *time = now.tv_sec * 1000000000LL + now.tv_nsec;
-+        return 0;
-+    }
-+    if (!in->amazon_stream->get_capture_position) return -ENOSYS;
-+    return in->amazon_stream->get_capture_position(in->amazon_stream, frames, time);
-+}
-+
- static int adev_open_input_stream(struct audio_hw_device* dev,
-                                   audio_io_handle_t handle,
-                                   audio_devices_t devices,
-@@ -468,15 +639,71 @@
-                                   audio_input_flags_t flags,
-                                   const char* address,
-                                   audio_source_t source) {
--    struct audio_hw_device* a = real_dev(dev);
--    return a->open_input_stream(a, handle, devices, config, stream_in, flags,
--                                address, source);
-+    struct wrapper_audio_device* adev = (struct wrapper_audio_device*)dev;
-+    struct audio_hw_device* a = adev->amazon_device;
-+    struct audio_stream_in* amazon_stream = NULL;
-+    struct wrapper_stream_in* in;
-+    int status;
-+
-+    status = a->open_input_stream(a, handle, devices, config, &amazon_stream, flags,
-+                                  address, source);
-+    if (status != 0) {
-+        return status;
-+    }
-+    if (!amazon_stream) {
-+        return -ENODEV;
-+    }
-+
-+    in = calloc(1, sizeof(*in));
-+    if (!in) {
-+        a->close_input_stream(a, amazon_stream);
-+        return -ENOMEM;
-+    }
-+
-+    in->amazon_stream = amazon_stream;
-+    in->adev = adev;
-+    in->stream = *amazon_stream;
-+
-+    // ponytail: every vendor callback must receive the real Fire OS stream.
-+    if (amazon_stream->common.get_sample_rate) in->stream.common.get_sample_rate = in_get_sample_rate;
-+    if (amazon_stream->common.set_sample_rate) in->stream.common.set_sample_rate = in_set_sample_rate;
-+    if (amazon_stream->common.get_buffer_size) in->stream.common.get_buffer_size = in_get_buffer_size;
-+    if (amazon_stream->common.get_channels) in->stream.common.get_channels = in_get_channels;
-+    if (amazon_stream->common.get_format) in->stream.common.get_format = in_get_format;
-+    if (amazon_stream->common.set_format) in->stream.common.set_format = in_set_format;
-+    if (amazon_stream->common.standby) in->stream.common.standby = in_standby;
-+    if (amazon_stream->common.dump) in->stream.common.dump = in_dump;
-+    if (amazon_stream->common.get_device) in->stream.common.get_device = in_get_device;
-+    if (amazon_stream->common.set_device) in->stream.common.set_device = in_set_device;
-+    if (amazon_stream->common.set_parameters) in->stream.common.set_parameters = in_set_parameters;
-+    if (amazon_stream->common.get_parameters) in->stream.common.get_parameters = in_get_parameters;
-+    if (amazon_stream->common.add_audio_effect) in->stream.common.add_audio_effect = in_add_audio_effect;
-+    if (amazon_stream->common.remove_audio_effect) in->stream.common.remove_audio_effect = in_remove_audio_effect;
-+    if (amazon_stream->set_gain) in->stream.set_gain = in_set_gain;
-+    if (amazon_stream->read) in->stream.read = in_read;
-+    if (amazon_stream->get_input_frames_lost) in->stream.get_input_frames_lost = in_get_input_frames_lost;
-+    in->stream.get_capture_position = in_get_capture_position;
-+
-+    in->beam_capable = adev->beam_model && amazon_stream->read &&
-+            amazon_stream->common.standby &&
-+            amazon_stream->common.get_sample_rate(&amazon_stream->common) == 16000 &&
-+            audio_channel_count_from_in_mask(
-+                    amazon_stream->common.get_channels(&amazon_stream->common)) == 1 &&
-+            amazon_stream->common.get_format(&amazon_stream->common) == AUDIO_FORMAT_PCM_16_BIT &&
-+            (devices & AUDIO_DEVICE_IN_BUILTIN_MIC & ~AUDIO_DEVICE_BIT_IN) != 0;
-+
-+    *stream_in = &in->stream;
-+    return 0;
- }
- 
- static void adev_close_input_stream(struct audio_hw_device* dev,
-                                     struct audio_stream_in* stream_in) {
--    struct audio_hw_device* a = real_dev(dev);
--    a->close_input_stream(a, stream_in);
-+    struct wrapper_audio_device* adev = (struct wrapper_audio_device*)dev;
-+    struct wrapper_stream_in* in = wrap_in(stream_in);
-+
-+    in_close_beam(in);
-+    adev->amazon_device->close_input_stream(adev->amazon_device, in->amazon_stream);
-+    free(in);
- }
- 
- static int adev_dump(const struct audio_hw_device* dev, int fd) {
-@@ -697,6 +924,7 @@
-         status = adev->amazon_device->common.close(
-                 (struct hw_device_t*)adev->amazon_device);
-     }
-+    mic_beam_model_free(adev->beam_model);
-     free(adev);
-     return status;
- }
-@@ -768,6 +996,7 @@
-     adev->device.common.module = (struct hw_module_t*)module;
-     adev->device.common.close = adev_close;
-     wrap_device_methods(adev);
-+    adev->beam_model = mic_beam_model_create();
-     *device = &adev->device.common;
-     return 0;
- 
++#endif
