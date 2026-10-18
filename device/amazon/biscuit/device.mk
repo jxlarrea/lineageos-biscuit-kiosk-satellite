@@ -95,5 +95,4 @@ PRODUCT_COPY_FILES += \
     device/amazon/biscuit/rootdir/ks-install.sh:$(TARGET_COPY_OUT_SYSTEM)/etc/ks-install.sh
 
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.biscuit.action_broadcast=1 \
-    log.tag.AudioALSAPlaybackHandlerNormal=S
+    ro.biscuit.action_broadcast=1
