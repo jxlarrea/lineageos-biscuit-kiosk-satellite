@@ -12,7 +12,7 @@ adb reboot recovery
 
 TWRP shows up in `adb devices -l` as `recovery` within about half a minute. Check with `adb devices -l` rather than `adb wait-for-recovery`, which can hang on the Dot.
 
-If the Dot does not boot into Android, see [If the Dot keeps restarting](#if-the-dot-keeps-restarting). The button methods from amonet v1 guides do not apply to amonet v2, and v2 has no fastboot mode.
+If the Dot does not boot into Android, see [If the Dot keeps restarting](#if-the-dot-keeps-restarting). The button methods from amonet v1 guides do not apply to amonet v2. Stock fastboot is gone on v2, and this image installs only from TWRP.
 
 TWRP has no screen on the Dot. Everything runs over `adb shell`, and the `twrp` command does what its buttons would on a phone, such as `twrp install` and `twrp wipe`.
 
