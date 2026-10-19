@@ -67,11 +67,13 @@ The first boot takes about a minute and a half. To update the image later, follo
    adb shell ip -4 addr show wlan0
    ```
 
-2. **Bluetooth** is on, for the Dot's Bluetooth speaker mode and Kiosk Satellite's Bluetooth proxy. If you are not using either, turn it off to save 15 to 20 MB of RAM:
+2. **Bluetooth** is off. If you want Kiosk Satellite's Bluetooth proxy or the Dot's Bluetooth speaker mode, turn it on:
 
    ```sh
-   adb shell biscuit_service bt off
+   adb shell biscuit_service bt on
    ```
+
+   It stays on across reboots. For the first five minutes after this command, the Dot can also be paired as a Bluetooth speaker.
 
 3. **Wait for Kiosk Satellite.** Once the Dot is on Wi-Fi, Kiosk Satellite is downloaded and installed automatically. Follow the progress with:
 
