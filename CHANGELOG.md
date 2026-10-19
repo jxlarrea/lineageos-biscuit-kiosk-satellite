@@ -2,6 +2,11 @@
 
 All notable changes to LineageOS for the Echo Dot (2nd Gen), Kiosk Satellite Edition are documented here. Images are published on the [releases page](https://github.com/jxlarrea/lineageos-biscuit-kiosk-satellite/releases).
 
+## Unreleased
+
+### Fixed
+- **Getting into TWRP on a Dot that does not boot.** The TWRP guide again says to hold the **+** button while plugging the Dot in, which starts TWRP on amonet v2. A new section covers a Dot that keeps restarting after an install, and the installation now stops when a TWRP install fails or the slot switch does not take.
+
 ## 2026.10.2 - 2026-10-18
 
 ### Added

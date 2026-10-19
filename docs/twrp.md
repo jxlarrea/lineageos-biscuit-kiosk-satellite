@@ -12,7 +12,7 @@ adb reboot recovery
 
 TWRP shows up in `adb devices -l` as `recovery` within about half a minute. Check with `adb devices -l` rather than `adb wait-for-recovery`, which can hang on the Dot.
 
-If the Dot does not boot into Android, see [If the Dot keeps restarting](#if-the-dot-keeps-restarting). The button methods from amonet v1 guides do not apply to amonet v2. Stock fastboot is gone on v2, and this image installs only from TWRP.
+If the Dot does not boot, unplug it, hold the **+** button and plug it back in. That starts TWRP, since amonet v2 has no fastboot mode. If TWRP does not show up either, see [If the Dot keeps restarting](#if-the-dot-keeps-restarting).
 
 TWRP has no screen on the Dot. Everything runs over `adb shell`, and the `twrp` command does what its buttons would on a phone, such as `twrp install` and `twrp wipe`.
 
@@ -51,7 +51,8 @@ The image never writes TWRP, the bootloader or the partition table, so a Dot tha
 
 1. **Wait.** The first boot takes about a minute and a half, and the Dot connects and disconnects a few times along the way. Give it three minutes.
 2. **Check the power.** The Dot runs on the micro USB cable. TWRP draws little, but Android starts Wi-Fi, audio and all four cores, and a weak computer port or unpowered hub may not keep up. Plug the Dot into its own power adapter. If it then stops restarting, use a stronger port or a powered hub for adb.
-3. **Catch adb during a restart.** If `adb devices -l` lists the Dot for a moment during each cycle, Android is starting and then failing. Run `adb reboot recovery` while it is listed to get back to TWRP, then reinstall from step 2 of the [installation](../README.md#installing).
-4. **Use the Preloader's download mode.** If adb never appears, unplug the Dot, hold only the **mute** button and plug it back in. amonet v2 uses this mode to repair a Dot that no longer boots. Follow the Important Notes in the [amonet thread on XDA](https://xdaforums.com/t/unlock-root-twrp-unbrick-amazon-echo-dot-2nd-gen-2016-biscuit.4761416/) for the rest of the procedure. If the Dot shows no light at all, see the test point section of firebreak's [README](https://github.com/bboe/firebreak#run-it).
+3. **Start TWRP with the + button.** Unplug the Dot, hold the **+** button and plug it back in. TWRP shows up in `adb devices -l` as `recovery` within about half a minute. Before you reinstall, save the log of the failed boot with `adb shell cat /proc/last_kmsg > last_kmsg.txt`, which helps find the cause.
+4. **Catch adb during a restart.** If `adb devices -l` lists the Dot for a moment during each cycle, Android is starting and then failing. Run `adb reboot recovery` while it is listed to get back to TWRP.
+5. **Use the Preloader's download mode.** If TWRP never shows up, unplug the Dot, hold only the **mute** button and plug it back in. Your computer then sees a `PWNED MT8163 Preloader`. amonet v2 uses this mode to repair a Dot that no longer boots. Follow the Important Notes in the [amonet thread on XDA](https://xdaforums.com/t/unlock-root-twrp-unbrick-amazon-echo-dot-2nd-gen-2016-biscuit.4761416/) for the rest of the procedure. If the Dot shows no light at all, see the test point section of firebreak's [README](https://github.com/bboe/firebreak#run-it).
 
 If you ask for help, include what both `twrp install` runs and `bcbtool get_active` printed, and whether adb ever shows the Dot during a restart.
