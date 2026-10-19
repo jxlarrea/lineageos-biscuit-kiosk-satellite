@@ -117,7 +117,7 @@ Before any installation, verify the generated updater. A safe Biscuit custom OTA
 - has no userdata/cache/recovery image or wipe command;
 - uses the Amonet 2 current-slot assertion contract.
 
-Install from TWRP only, into both slots, as the [README](../README.md#installing) describes.
+Install from TWRP only, into slot A, as the [README](../README.md#installing) describes. Booting the image from slot B has not worked on a user's Dot. The kernel drops the bootloader's `androidboot.slot_suffix` (`CONFIG_CMDLINE_FORCE`), so fs_mgr picks the slot from amonet's BCB in `/misc` instead.
 
 ## Patch application model
 

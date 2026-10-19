@@ -40,6 +40,14 @@ See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change 
 
    It must print `3.7.0_9-0`. If it prints anything else, stop here and see [Getting into TWRP](docs/twrp.md#checking-the-version).
 
+   Then check the active slot:
+
+   ```sh
+   adb shell bcbtool get_active
+   ```
+
+   It should print `a`. The image boots from slot A, and a Dot that booted it from slot B kept restarting. If it prints `b`, run `adb shell bcbtool set_active a` and `adb reboot recovery`, then check again.
+
 3. Erase the Dot and install the image. Replace `<image>.zip` with the file you downloaded:
 
    ```sh
@@ -49,26 +57,7 @@ See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change 
    adb shell twrp install /sdcard/update.zip
    ```
 
-   If the install prints an error or `assert failed`, stop here and do not reboot. TWRP is still running, so nothing is lost yet.
-
-4. Install it into the Dot's other slot too, so both slots hold the image. `bcbtool get_active` prints `a` or `b`. Switch to the other one:
-
-   ```sh
-   adb shell bcbtool get_active
-   adb shell bcbtool set_active b
-   adb reboot recovery
-   ```
-
-   If `get_active` printed `b`, use `set_active a` instead.
-
-   Run `adb devices -l` until it lists the Dot as `recovery` again. Check that the switch took, then install:
-
-   ```sh
-   adb shell bcbtool get_active
-   adb shell twrp install /sdcard/update.zip
-   ```
-
-   `get_active` must print the slot you switched to. If it does not, or the install prints an error or `assert failed`, do not reboot. Run `adb shell bcbtool set_active` with the slot from step 3 to go back to the copy that installed, then reboot. Otherwise finish:
+   If the install prints an error or `assert failed`, stop here and do not reboot. TWRP is still running, so nothing is lost yet. Otherwise finish:
 
    ```sh
    adb shell rm /sdcard/update.zip
@@ -84,9 +73,11 @@ To update the image later, follow the same steps but skip `twrp wipe data`, whic
 1. **Join Wi-Fi.** The second command shows the Dot's IP address:
 
    ```sh
-   adb shell biscuit_service wifi connect '<ssid>' '<password>'
+   adb shell "biscuit_service wifi connect '<ssid>' '<password>'"
    adb shell ip -4 addr show wlan0
    ```
+
+   Keep the double quotes around the whole command. Without them, `adb shell` splits a Wi-Fi name or password with spaces into separate words before it reaches the Dot.
 
 2. **Bluetooth** is off. If you want Kiosk Satellite's Bluetooth proxy or the Dot's Bluetooth speaker mode, turn it on:
 

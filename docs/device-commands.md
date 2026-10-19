@@ -4,7 +4,7 @@ The image includes `biscuit_service`, which controls the Dot's Wi-Fi, Bluetooth,
 
 ```sh
 adb shell biscuit_service wifi on
-adb shell biscuit_service wifi connect '<ssid>' '<password>'
+adb shell "biscuit_service wifi connect '<ssid>' '<password>'"
 adb shell biscuit_service wifi off
 adb shell biscuit_service bt on
 adb shell biscuit_service bt off
