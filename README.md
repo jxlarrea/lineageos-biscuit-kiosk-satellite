@@ -30,8 +30,15 @@ See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change 
 
    ```sh
    adb reboot recovery
-   adb wait-for-recovery
    ```
+
+   Run `adb devices -l` until it lists the Dot as `recovery`, which takes about half a minute. Then check the TWRP version:
+
+   ```sh
+   adb shell getprop ro.twrp.version
+   ```
+
+   It must print `3.7.0_9-0`. If it prints anything else, stop here and see [Getting into TWRP](docs/twrp.md#checking-the-version).
 
 3. Erase the Dot and install the image. Replace `<image>.zip` with the file you downloaded:
 
@@ -42,21 +49,35 @@ See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change 
    adb shell twrp install /sdcard/update.zip
    ```
 
-4. Install it into the Dot's second slot too, so it always has a working copy to fall back to. `bcbtool get_active` prints `a` or `b`. Switch to the other one:
+   If the install prints an error or `assert failed`, stop here and do not reboot. TWRP is still running, so nothing is lost yet.
+
+4. Install it into the Dot's other slot too, so both slots hold the image. `bcbtool get_active` prints `a` or `b`. Switch to the other one:
 
    ```sh
    adb shell bcbtool get_active
    adb shell bcbtool set_active b
    adb reboot recovery
-   adb wait-for-recovery
-   adb shell twrp install /sdcard/update.zip
-   adb shell rm /sdcard/update.zip
-   adb reboot
    ```
 
    If `get_active` printed `b`, use `set_active a` instead.
 
-The first boot takes about a minute and a half. To update the image later, follow the same steps but skip `twrp wipe data`, which keeps Kiosk Satellite and its settings.
+   Run `adb devices -l` until it lists the Dot as `recovery` again. Check that the switch took, then install:
+
+   ```sh
+   adb shell bcbtool get_active
+   adb shell twrp install /sdcard/update.zip
+   ```
+
+   `get_active` must print the slot you switched to. If it does not, or the install prints an error or `assert failed`, do not reboot. Run `adb shell bcbtool set_active` with the slot from step 3 to go back to the copy that installed, then reboot. Otherwise finish:
+
+   ```sh
+   adb shell rm /sdcard/update.zip
+   adb reboot
+   ```
+
+The first boot takes about a minute and a half. On the way, the Dot connects and disconnects from your computer a few times, so leave it plugged in for at least three minutes before deciding something is wrong. If it keeps restarting, see [If the Dot keeps restarting](docs/twrp.md#if-the-dot-keeps-restarting).
+
+To update the image later, follow the same steps but skip `twrp wipe data`, which keeps Kiosk Satellite and its settings.
 
 ## After installing
 
