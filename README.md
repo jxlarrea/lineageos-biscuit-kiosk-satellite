@@ -13,6 +13,7 @@ A LineageOS 14.1 (Android 7.1.2) image for the 2nd generation Echo Dot (`biscuit
 - **A steady light ring and a clean speaker.** The light ring no longer strobes while Kiosk Satellite animates it, and it goes back to Kiosk Satellite's colors after the volume overlay. The speaker no longer crackles on the first playback after boot.
 - **Automatic Kiosk Satellite installation.** On first boot the latest Kiosk Satellite release is downloaded, installed, given every permission and made the device owner, so its updates install without a confirmation. No adb grants needed.
 - **The Action button as a broadcast.** The Action button reaches apps as a broadcast, so newer Kiosk Satellite versions do not need an accessibility service to receive it.
+- **Volume buttons for a Music Assistant group.** Kiosk Satellite can take over the volume buttons, so they change the volume of the Music Assistant group the Dot plays in, or of a player it follows, instead of the Dot's own. Set **Volume buttons control the player** to **While the player is playing** under Media Player. The buttons go back to the Dot's own volume when the Dot plays alone or Kiosk Satellite stops.
 
 See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change and how it was measured.
 

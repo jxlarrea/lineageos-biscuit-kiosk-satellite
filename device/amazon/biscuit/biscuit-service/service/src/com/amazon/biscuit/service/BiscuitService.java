@@ -10,6 +10,7 @@ import android.net.LocalSocket;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.net.LocalSocketAddress;
+import android.os.Binder;
 import android.os.IBinder;
 import android.os.RemoteException;
 
@@ -54,9 +55,27 @@ public final class BiscuitService extends Service {
     private static final String EXTRA_STREAM_TYPE = "android.media.EXTRA_VOLUME_STREAM_TYPE";
     private static final String EXTRA_STREAM_VALUE = "android.media.EXTRA_VOLUME_STREAM_VALUE";
     private static final String EXTRA_MICROPHONE_MUTED = "com.amazon.biscuit.service.EXTRA_MICROPHONE_MUTED";
+    private static final String EXTRA_FROM_BUTTON = "com.amazon.biscuit.service.EXTRA_FROM_BUTTON";
+    private static final String VOLUME_BUTTON = "com.amazon.biscuit.service.VOLUME_BUTTON";
+    private static final String EXTRA_DIRECTION = "direction";
     private static final int PAIRING_MODE_SECONDS = 300;
     private final Object mLock = new Object();
     private boolean mMicMuted;
+
+    // The app holding the volume buttons, if any, and the token whose death
+    // gives them back, so a crashed app never leaves the buttons dead.
+    // Its own lock: mLock is held across slow daemon calls.
+    private final Object mClaimLock = new Object();
+    private IBinder mVolumeClaim;
+    private String mVolumeClaimPackage;
+    private final IBinder.DeathRecipient mVolumeClaimDeath = new IBinder.DeathRecipient() {
+        public void binderDied() {
+            synchronized (mClaimLock) {
+                mVolumeClaim = null;
+                mVolumeClaimPackage = null;
+            }
+        }
+    };
 
     private final IBiscuitService.Stub mBinder = new IBiscuitService.Stub() {
         public boolean play(String name) throws RemoteException {
@@ -86,7 +105,54 @@ public final class BiscuitService extends Service {
         public String status() throws RemoteException {
             return send("STATUS");
         }
+
+        public boolean claimVolumeButtons(IBinder token, boolean claimed) throws RemoteException {
+            if (token == null) throw new RemoteException("missing token");
+            String[] packages = getPackageManager().getPackagesForUid(Binder.getCallingUid());
+            if (packages == null || packages.length == 0) return false;
+            synchronized (mClaimLock) {
+                if (!claimed) {
+                    if (token != mVolumeClaim) return false;
+                    releaseVolumeClaim();
+                    return true;
+                }
+                if (token == mVolumeClaim) return true;
+                releaseVolumeClaim();
+                token.linkToDeath(mVolumeClaimDeath, 0);
+                mVolumeClaim = token;
+                mVolumeClaimPackage = packages[0];
+                return true;
+            }
+        }
     };
+
+    // Callers hold mClaimLock.
+    private void releaseVolumeClaim() {
+        if (mVolumeClaim != null) {
+            try {
+                mVolumeClaim.unlinkToDeath(mVolumeClaimDeath, 0);
+            } catch (RuntimeException ignored) { }
+        }
+        mVolumeClaim = null;
+        mVolumeClaimPackage = null;
+    }
+
+    // A volume button press goes to the app that claimed the buttons.
+    // False when nothing holds them, so the press changes the volume.
+    private boolean forwardVolumeButton(Intent intent, String direction) {
+        if (!intent.getBooleanExtra(EXTRA_FROM_BUTTON, false)) return false;
+        String target;
+        synchronized (mClaimLock) {
+            target = mVolumeClaimPackage;
+        }
+        if (target == null) return false;
+        Intent press = new Intent(VOLUME_BUTTON);
+        press.setPackage(target);
+        press.addFlags(Intent.FLAG_RECEIVER_FOREGROUND | Intent.FLAG_RECEIVER_REGISTERED_ONLY);
+        press.putExtra(EXTRA_DIRECTION, direction);
+        sendBroadcast(press);
+        return true;
+    }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -114,9 +180,9 @@ public final class BiscuitService extends Service {
         } else if (intent != null && WIFI_CONNECT.equals(intent.getAction())) {
             connectWifi(intent.getStringExtra(EXTRA_SSID), intent.getStringExtra(EXTRA_PSK));
         } else if (intent != null && VOLUME_UP.equals(intent.getAction())) {
-            adjustVolume(AudioManager.ADJUST_RAISE);
+            if (!forwardVolumeButton(intent, "up")) adjustVolume(AudioManager.ADJUST_RAISE);
         } else if (intent != null && VOLUME_DOWN.equals(intent.getAction())) {
-            adjustVolume(AudioManager.ADJUST_LOWER);
+            if (!forwardVolumeButton(intent, "down")) adjustVolume(AudioManager.ADJUST_LOWER);
         } else if (intent != null && VOLUME_SET.equals(intent.getAction())) {
             setVolume(intent.getIntExtra(EXTRA_VOLUME, -1));
         } else if (intent != null && COUNTDOWN_PROGRESS.equals(intent.getAction())) {

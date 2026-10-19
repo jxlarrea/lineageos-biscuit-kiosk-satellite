@@ -22,6 +22,7 @@ A CM14.1 Biscuit build tuned for Kiosk Satellite running headless: a voice satel
 | --- | --- | --- |
 | First-boot Kiosk Satellite installer | `rootdir/ks-install.sh` | Downloads the latest release's ABI split (the same file the in-app updater picks), installs it, starts it, and applies every grant and device owner. Grants are reapplied on every boot. `setprop persist.biscuit.ks_install 0` turns it off. |
 | Action button broadcast from `PhoneWindowManager` | `patches/full/030` | Kiosk Satellite no longer needs an accessibility service or a wake lock to hear the button. `ro.biscuit.action_broadcast` advertises it. The key still reaches apps for older Kiosk Satellite versions. |
+| Volume buttons claimable by an app | `patches/full/037`, `BiscuitService.java` | Kiosk Satellite can send the volume buttons to the Music Assistant group the Dot plays in or to a player it follows. An app claims them through BiscuitService's `claimVolumeButtons` with a token. While the claim holds, each press goes to that app as a `com.amazon.biscuit.service.VOLUME_BUTTON` broadcast instead of changing the volume. The claim ends when the app gives it back or dies. `biscuit_service volume up` and `down` still change the volume. `ro.biscuit.volume_claim` advertises it. |
 
 ### Idle CPU and logging
 

@@ -1,0 +1,13 @@
+--- a/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -6596,6 +6596,10 @@
+                     Intent intent = new Intent(action);
+                     intent.setClassName("com.amazon.biscuit.service",
+                             "com.amazon.biscuit.service.BiscuitService");
++                    // Marks a real button press, so BiscuitService can hand
++                    // the volume buttons to an app that claimed them while
++                    // biscuit_service volume up and down keep their job.
++                    intent.putExtra("com.amazon.biscuit.service.EXTRA_FROM_BUTTON", true);
+                     mContext.startServiceAsUser(intent, UserHandle.CURRENT);
+                 }
+                 return 0;
