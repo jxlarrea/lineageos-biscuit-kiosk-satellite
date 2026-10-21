@@ -104,7 +104,8 @@ PRODUCT_PACKAGES += \
     libwebviewchromium_plat_support
 
 PRODUCT_COPY_FILES += \
-    device/amazon/biscuit/rootdir/ks-install.sh:$(TARGET_COPY_OUT_SYSTEM)/etc/ks-install.sh
+    device/amazon/biscuit/rootdir/ks-install.sh:$(TARGET_COPY_OUT_SYSTEM)/etc/ks-install.sh \
+    device/amazon/biscuit/pryon/locales.txt:$(TARGET_COPY_OUT_SYSTEM)/etc/pryon/locales.txt
 
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.biscuit.action_broadcast=1 \

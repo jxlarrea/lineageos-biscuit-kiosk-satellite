@@ -5,10 +5,10 @@ All notable changes to LineageOS for the Echo Dot (2nd Gen), Kiosk Satellite Edi
 ## Unreleased
 
 ### Added
-- **Alexa as a wake word.** The image now includes Amazon's own wake word engine and the Alexa model from Fire OS, so Kiosk Satellite can listen for "Alexa" the way the Dot did before it was unlocked. A plain "stop" also stops a ringing timer or a reply, where Amazon's model only heard "stop" right after "Alexa". Choose **Amazon** as the wake word engine in Kiosk Satellite, in a version that supports it.
+- **Amazon's wake words.** The image now includes Amazon's own wake word engine with its models for Alexa, Echo, Computer, Amazon and Ziggy in 17 locales, from English and Spanish to Japanese and Arabic. Kiosk Satellite can listen the way an Echo does: choose **Amazon** as the wake word engine and the language of its models, in a version that supports it. A plain "stop" also stops a ringing timer or a reply, where Amazon's models only heard "stop" right after the wake word.
 
 ### Changed
-- **Installing into both slots, one at a time.** The installation now checks that the image boots from the first slot before it installs it into the second, and checks the second slot the same way. If the second slot does not boot, switching back to the first boots the copy that worked.
+- **Installing into both slots, slot A first.** The Dot's bootloader always starts slot A's kernel, whichever slot is active. A Dot with the image only in slot B started another kernel and kept restarting. The installation now installs into slot A first, checks that it boots, then installs into slot B and checks that too.
 
 ### Fixed
 - **Getting into TWRP on a Dot that does not boot.** The TWRP guide again says to hold the **+** button while plugging the Dot in, which starts TWRP on amonet v2. A new section covers a Dot that keeps restarting after an install, and the installation now stops when a TWRP install fails.

@@ -133,6 +133,9 @@ else
     rm -rf "$OUT_DIR/target/product/biscuit/system/app/$stale_app" \
            "$OUT_DIR/target/product/biscuit/system/priv-app/$stale_app"
   done
+  # Amazon's wake word models, copied again from the manifests on every
+  # build: a model set a manifest no longer names must not stay behind.
+  rm -rf "$OUT_DIR/target/product/biscuit/system/etc/pryon"
 fi
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then

@@ -5,7 +5,7 @@ A LineageOS 14.1 (Android 7.1.2) image for the 2nd generation Echo Dot (`biscuit
 ## What it improves over the upstream port
 
 - **Wake word detection over loud music.** The Dot has seven microphones but Android only detects one. The image reads all seven and removes the speaker's sound from them while music plays: 13 to 17 dB less music, with your voice nearly untouched. The wake word works with music at 100% volume, where it used to fail from about 75%.
-- **Alexa as a wake word.** The image includes Amazon's own wake word engine and the Alexa model from Fire OS, so Kiosk Satellite can listen for "Alexa" the way the Dot did before it was unlocked. It runs on the Dot, with nothing sent to Amazon.
+- **Amazon's wake word engine** The image includes Amazon's own wake word engine with its models for Alexa, Echo, Computer, Amazon and Ziggy in 17 locales, so Kiosk Satellite can listen the way an Echo does. A plain "stop" stops a ringing timer or a reply. It runs on the Dot, with nothing sent to Amazon. microWakeWord, openWakeword and vsWakeWord are also available in Kiosk Satellite.
 - **A louder microphone.** The microphone preamp goes from 20 dB to 36 dB. Speech used to come in about 20 dB too quiet, and intercom calls from the Dot were barely audible.
 - **Less CPU at idle.** SurfaceFlinger used about 5% of a core retrying a framebuffer the Dot does not have, logging about 110 lines a second as it did. It now stays under 1%. The audio driver's "asp Pipeline doesn't exist" error, logged about 75 times a second during playback, is gone too. The display runs at 1 fps instead of 60, and there is no boot animation.
 - **More free memory.** SystemUI (29 MB), the phone process and its providers (26 MB), LiveDisplay and nearly 30 unused apps and services are left out. Swap on zram (256 MB) now works: upstream configured more swap than the Dot has RAM, with a compression method its kernel lacks, so it never started. Apps get the standard Dalvik heap settings for 512 MB devices instead of a 16 MB limit. With Kiosk Satellite running, around 300 MB of the Dot's 480 MB stays free.
@@ -40,6 +40,14 @@ See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change 
    ```
 
    It must print `3.7.0_9-0`. If it prints anything else, stop here and see [Getting into TWRP](docs/twrp.md#checking-the-version).
+
+   Then check the active slot:
+
+   ```sh
+   adb shell bcbtool get_active
+   ```
+
+   It must print `a`, because the Dot always starts slot A's kernel and the first copy of the image has to bring it. If it prints `b`, run `adb shell bcbtool set_active a` and `adb reboot recovery`, then check again.
 
 3. Erase the Dot and install the image. Replace `<image>.zip` with the file you downloaded:
 

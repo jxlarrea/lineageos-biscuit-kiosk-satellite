@@ -43,6 +43,16 @@ make full
 
 The build container mounts that path too.
 
+## Amazon's wake word models
+
+Pryon and the en-US Alexa model come from the Fire OS OTA like the other blobs. The other wake words and locales come from Amazon's DAVS, which hands them out only to an Echo registered to an Amazon account, so the build cannot download them. They live in the private [amazon-davs-models](https://github.com/jxlarrea/amazon-davs-models) repository, one folder per set. Check it out next to this repository, or set `DAVS_MODELS` to where it is. The build checks every file against `vendor/amazon/mt8163-common/biscuit-davs-model-files.txt` before it installs them under `/system/etc/pryon`. `device/amazon/biscuit/pryon/locales.txt` names the sets each locale listens with.
+
+To refresh them, fetch the sets again with that repository's `fetch.py` from a registered Dot running Fire OS, then rewrite the manifest:
+
+```sh
+scripts/make-davs-model-manifest.py
+```
+
 ## One-time source synchronization
 
 ```sh
@@ -117,7 +127,7 @@ Before any installation, verify the generated updater. A safe Biscuit custom OTA
 - has no userdata/cache/recovery image or wipe command;
 - uses the Amonet 2 current-slot assertion contract.
 
-Install from TWRP only, into both slots, as the [README](../README.md#installing) describes. The kernel drops the bootloader's `androidboot.slot_suffix` (`CONFIG_CMDLINE_FORCE`), so fs_mgr picks the slot from amonet's BCB in `/misc`, which `bcbtool set_active` writes. A Dot booted from slot B mounts `system_b`.
+Install from TWRP only, into both slots and slot A first, as the [README](../README.md#installing) describes. The bootloader always loads `boot_a`, whatever amonet's BCB in `/misc` says: with slot B active and marked successful, a Dot ran slot A's kernel. The kernel drops the bootloader's `androidboot.slot_suffix` (`CONFIG_CMDLINE_FORCE`), so fs_mgr picks the slot from that BCB, which `bcbtool set_active` writes. A Dot booted with slot B active runs `boot_a` with `system_b`.
 
 ## Patch application model
 

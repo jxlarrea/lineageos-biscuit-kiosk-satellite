@@ -1,19 +1,22 @@
 // Amazon's wake word engine (Pryon) as a service for Kiosk Satellite.
 //
-// The libraries and models come from the Fire OS 6.5.7.4 OTA (see
+// The libraries and the en-US Alexa model come from the Fire OS 6.5.7.4 OTA,
+// the models of the other wake words and locales from Amazon's DAVS (see
 // scripts/extract-fireos6-blobs.sh). Nothing is loaded until a client asks
 // to listen, so the daemon costs next to nothing while another engine runs.
 //
 // Protocol, on the init socket biscuit-pryon:
 //
 // The daemon speaks first, with one JSON line listing every model under
-// /system/etc/pryon, the keywords each one spots and the threshold each
-// keyword is accepted at before any client property lowers it. A keyword
-// named STOP is a stop word, every other one a wake word:
+// /system/etc/pryon, the locales that listen with it (locales.txt there),
+// the keywords it spots and the threshold each keyword is accepted at before
+// any client property lowers it. A keyword named STOP is a stop word, every
+// other one a wake word. The models come in the order locales.txt names
+// them, en-US first:
 //
-//   {"event":"hello","version":1,"models":[{"model":"ALEXA",
-//     "wake_words":["ALEXA"],"stop_words":["STOP"],
-//     "accept_thresholds":{"ALEXA":0.923,"STOP":0.55}}]}
+//   {"event":"hello","version":1,"models":[{"model":"alexa-en-US",
+//     "locales":["en-US"],"wake_words":["ALEXA"],"stop_words":["STOP"],
+//     "accept_thresholds":{"ALEXA":0.923,"STOP":0.18}}]}
 //
 // The client sends frames: a type byte, a little-endian 32-bit length and
 // the payload.
@@ -31,7 +34,7 @@
 // a near miss, and its threshold is then the lower one Pryon reports near
 // misses from. begin and end count samples since the client's first audio.
 //
-//   {"event":"detection","model":"ALEXA","keyword":"ALEXA","stop":false,
+//   {"event":"detection","model":"alexa-en-US","keyword":"ALEXA","stop":false,
 //    "accepted":true,"score":0.976,"threshold":0.923,"begin":133920,
 //    "end":142080}
 //
@@ -54,6 +57,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -86,7 +90,7 @@ static int (*p_session_end)(const char*);
 
 struct Model {
     std::string name;
-    std::vector<std::string> wake, stop;
+    std::vector<std::string> locales, wake, stop;
     std::map<std::string, double> accept;
 };
 struct Score { double score, threshold; };
@@ -156,32 +160,80 @@ static double accept_threshold(const std::string& cfg, const std::string& keywor
     return -1;
 }
 
+// The keyword files sit next to the manifest in the older models and in
+// BDPGeneratedFiles/ in the newer, multi-stage ones.
+static std::string keyword_file(const std::string& dir, const char* name) {
+    std::string path = dir + "/" + name;
+    if (!access(path.c_str(), R_OK)) return path;
+    return dir + "/BDPGeneratedFiles/" + name;
+}
+
+// locales.txt: one line per locale, the locale and then its model sets.
+static std::vector<std::pair<std::string, std::string> > read_locales() {
+    std::vector<std::pair<std::string, std::string> > out;
+    FILE* f = fopen((g_model_dir + "/locales.txt").c_str(), "r");
+    if (!f) return out;
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        if (line[0] == '#') continue;
+        char* save = NULL;
+        char* locale = strtok_r(line, " \t\r\n", &save);
+        if (!locale) continue;
+        while (char* set = strtok_r(NULL, " \t\r\n", &save)) out.push_back(std::make_pair(set, locale));
+    }
+    fclose(f);
+    return out;
+}
+
+static bool read_model(const std::string& name, Model* m) {
+    std::string dir = g_model_dir + "/" + name;
+    if (access((dir + "/pryon.manifest").c_str(), R_OK)) return false;
+    // words.shrunk.txt: "<eps> 0", then one keyword and its id per line. The
+    // newer models also list background tokens such as _BG_WORD_[S].
+    FILE* f = fopen(keyword_file(dir, "words.shrunk.txt").c_str(), "r");
+    if (!f) return false;
+    m->name = name;
+    char word[128];
+    int id;
+    while (fscanf(f, "%127s %d", word, &id) == 2) {
+        if (word[0] == '<' || word[0] == '_') continue;
+        (strcmp(word, "STOP") ? m->wake : m->stop).push_back(word);
+    }
+    fclose(f);
+    std::string cfg = read_file(keyword_file(dir, "kw.cfg.json"));
+    for (size_t i = 0; i < m->wake.size(); ++i) m->accept[m->wake[i]] = accept_threshold(cfg, m->wake[i]);
+    for (size_t i = 0; i < m->stop.size(); ++i) m->accept[m->stop[i]] = accept_threshold(cfg, m->stop[i]);
+    return !m->wake.empty() || !m->stop.empty();
+}
+
 static std::vector<Model> find_models() {
     std::vector<Model> models;
+    std::map<std::string, size_t> index;
+    std::vector<std::pair<std::string, std::string> > locales = read_locales();
+    for (size_t i = 0; i < locales.size(); ++i) {
+        std::map<std::string, size_t>::iterator it = index.find(locales[i].first);
+        if (it == index.end()) {
+            Model m;
+            if (!read_model(locales[i].first, &m)) continue;
+            index[m.name] = models.size();
+            models.push_back(m);
+            it = index.find(m.name);
+        }
+        models[it->second].locales.push_back(locales[i].second);
+    }
+    // A model locales.txt does not name still listens, for no locale.
     DIR* d = opendir(g_model_dir.c_str());
     if (!d) return models;
+    std::vector<std::string> rest;
     while (dirent* e = readdir(d)) {
-        if (e->d_name[0] == '.') continue;
-        std::string dir = g_model_dir + "/" + e->d_name;
-        if (access((dir + "/pryon.manifest").c_str(), R_OK)) continue;
-        // words.shrunk.txt: "<eps> 0", then one keyword and its id per line.
-        FILE* f = fopen((dir + "/words.shrunk.txt").c_str(), "r");
-        if (!f) continue;
-        Model m;
-        m.name = e->d_name;
-        char word[128];
-        int id;
-        while (fscanf(f, "%127s %d", word, &id) == 2) {
-            if (word[0] == '<') continue;
-            (strcmp(word, "STOP") ? m.wake : m.stop).push_back(word);
-        }
-        fclose(f);
-        std::string cfg = read_file(dir + "/kw.cfg.json");
-        for (size_t i = 0; i < m.wake.size(); ++i) m.accept[m.wake[i]] = accept_threshold(cfg, m.wake[i]);
-        for (size_t i = 0; i < m.stop.size(); ++i) m.accept[m.stop[i]] = accept_threshold(cfg, m.stop[i]);
-        if (!m.wake.empty() || !m.stop.empty()) models.push_back(m);
+        if (e->d_name[0] != '.' && !index.count(e->d_name)) rest.push_back(e->d_name);
     }
     closedir(d);
+    std::sort(rest.begin(), rest.end());
+    for (size_t i = 0; i < rest.size(); ++i) {
+        Model m;
+        if (read_model(rest[i], &m)) models.push_back(m);
+    }
     return models;
 }
 
@@ -370,6 +422,7 @@ static void serve(int fd) {
             accept += (accept.empty() ? "" : ",") + quote(it->first) + ":" + num;
         }
         hello += (i ? "," : "") + std::string("{\"model\":") + quote(models[i].name) +
+                 ",\"locales\":" + list(models[i].locales) +
                  ",\"wake_words\":" + list(models[i].wake) + ",\"stop_words\":" + list(models[i].stop) +
                  ",\"accept_thresholds\":{" + accept + "}}";
     }

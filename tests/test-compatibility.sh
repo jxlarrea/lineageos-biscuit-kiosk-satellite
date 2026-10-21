@@ -151,7 +151,17 @@ grep -Fqx 'HWC_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-headless
 grep -Fqx 'RADIO_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-radio-files.txt"' "$EXTRACTOR"
 grep -Fqx 'BT_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-bluetooth-files.txt"' "$EXTRACTOR"
 grep -Fqx 'PRYON_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-pryon-files.txt"' "$EXTRACTOR"
-[[ "$(grep -vc '^#' "$VENDOR/biscuit-pryon-files.txt")" == 27 ]]
+[[ "$(grep -vc '^#' "$VENDOR/biscuit-pryon-files.txt")" == 28 ]]
+grep -Fq ':lib/libtvm_modelops_ww_v5_cnet.so:' "$VENDOR/biscuit-pryon-files.txt"
+grep -Fq ':etc/pryon/alexa-en-US/pryon.manifest:' "$VENDOR/biscuit-pryon-files.txt"
+grep -Fqx 'DAVS_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-davs-model-files.txt"' "$EXTRACTOR"
+grep -Fqx 'DAVS_DIR="${DAVS_MODELS:-$REPO_ROOT/../amazon-davs-models}"' "$EXTRACTOR"
+grep -Fqx 'en-US alexa-en-US echo-en-US computer-en-US' "$DEVICE/pryon/locales.txt"
+grep -Fq 'device/amazon/biscuit/pryon/locales.txt:$(TARGET_COPY_OUT_SYSTEM)/etc/pryon/locales.txt' "$DEVICE/device.mk"
+# Every set locales.txt names is in the DAVS manifest, but the firmware's Alexa.
+for set in $(grep -v '^#' "$DEVICE/pryon/locales.txt" | cut -d' ' -f2- | tr ' ' '\n' | sort -u); do
+  [[ "$set" == alexa-en-US ]] || grep -q "^$set/pryon.manifest:" "$VENDOR/biscuit-davs-model-files.txt"
+done
 grep -Fqx 'system/lib/libpryon.so:lib/pryon/libpryon.so:920dc04d2253706a1c20b14477a3460bdc36d7ee84b3fb27a55cdf5823189748:10388280' "$VENDOR/biscuit-pryon-files.txt"
 grep -Fq 'thresholds["accept-threshold"] = 0.18' "$EXTRACTOR"
 grep -Fqx 'MINIMAL_VENDOR_MK_TMP="$TMP/mt8163-common-minimal-vendor.mk"' "$EXTRACTOR"

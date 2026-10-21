@@ -1,0 +1,22 @@
+# The Amazon wake word models each locale listens with, as DAVS handed them out
+# on 2026-10-21. One line per locale: the locale, then the model sets under
+# /system/etc/pryon. Locales that DAVS answered with the same model share it.
+# alexa-en-US is the firmware's model; every other set comes from DAVS
+# (vendor/amazon/mt8163-common/biscuit-davs-model-files.txt).
+en-US alexa-en-US echo-en-US computer-en-US
+en-CA alexa-en-CA echo-en-US computer-en-US
+en-GB alexa-en-GB echo-en-GB computer-en-GB
+en-AU alexa-en-GB echo-en-GB computer-en-GB
+en-IN alexa-en-IN echo-en-IN computer-en-IN
+hi-IN alexa-en-IN echo-en-IN computer-en-IN
+es-US alexa-es-US echo-es-US computer-es-US
+es-MX alexa-es-US echo-es-MX
+es-ES alexa-es-US echo-es-US
+fr-FR alexa-fr-FR echo-fr-FR
+fr-CA alexa-fr-FR echo-fr-FR
+de-DE alexa-de-DE echo-de-DE computer-de-DE
+it-IT alexa-it-IT echo-it-IT computer-it-IT
+pt-BR alexa-pt-BR echo-pt-BR
+ja-JP alexa-ja-JP echo-ja-JP computer-ja-JP
+nl-NL alexa-de-DE echo-nl-NL
+ar-SA alexa-ar-SA echo-ar-SA

@@ -1,5 +1,5 @@
 # source:destination:sha256:size
-# Amazon's wake word engine (Pryon), its libraries and the Alexa model, for biscuit-pryond.
+# Amazon's wake word engine (Pryon), its libraries, the TVM model library some DAVS models load from /system/lib and the firmware's Alexa model, for biscuit-pryond.
 system/lib/libc++_shared.so:lib/pryon/libc++_shared.so:bd0e2649b43f6409bd7d1330b28b7871594cb24a10c75f3167cfe84cdd4000bf:605452
 system/lib/libfst.so:lib/pryon/libfst.so:c8b999f3f36d1649175d4e39b6b8a459e81b384465ce38a367fb7f44fc6d438e:257968
 system/lib/libfstfar.so:lib/pryon/libfstfar.so:189ae0645ffbef07aa11f6e762fb61bd2c3d63fb87337c05d0dd669f4635a9c9:22396
@@ -15,15 +15,16 @@ system/lib/libacsl.so:lib/pryon/libacsl.so:fc23333947b0007497cec85d56626eab0630b
 system/lib/libblu_native_toolkit.so:lib/pryon/libblu_native_toolkit.so:41ba1b079e3a67ccf723e763f4fc0e3e48a6b4a6c49a896b1c6e42a50751bbc9:762500
 system/lib/libgrxml_parser.so:lib/pryon/libgrxml_parser.so:ce286146eba1ea5a651b170f31891427660457f3bedfbe0c25c53fbbc354291e:647356
 system/lib/libpryon.so:lib/pryon/libpryon.so:920dc04d2253706a1c20b14477a3460bdc36d7ee84b3fb27a55cdf5823189748:10388280
-system/local/models/keyword/en-US/ALEXA/checksum.txt:etc/pryon/ALEXA/checksum.txt:1deac5c44bb6fc24f035cdeb9244facf31d1ef6ee844fbe8ad756cd09f752bae:32
-system/local/models/keyword/en-US/ALEXA/cmvn.6khz.mat:etc/pryon/ALEXA/cmvn.6khz.mat:9294d116296d25a11ff94db8cac89cf6c3c86695e0f3b5d95407e80c12623737:183
-system/local/models/keyword/en-US/ALEXA/fingerprint-fe.config:etc/pryon/ALEXA/fingerprint-fe.config:701320d67750f4464d7bb7661e0c3751ab8e708b2a04664f6e8b051d66fa2327:931
-system/local/models/keyword/en-US/ALEXA/kw.cfg.json:etc/pryon/ALEXA/kw.cfg.json:b206edded3694991ab523b146f159c564c3248d987a63dd75ccef7d3b4dadf59:3243
-system/local/models/keyword/en-US/ALEXA/multiple_fe.json:etc/pryon/ALEXA/multiple_fe.json:680bc880da6b647299ed6bdf0b1982eba61a5bc9687ece84722c3a1334ce5a66:215
-system/local/models/keyword/en-US/ALEXA/nemort_scorer_config.json:etc/pryon/ALEXA/nemort_scorer_config.json:63825216212a27f4c70c72914652db3e9ca844e1ab5fda4700f8275e1c88ae32:1546
-system/local/models/keyword/en-US/ALEXA/op.cfg.json:etc/pryon/ALEXA/op.cfg.json:b702b3cee9b87e380fb5816432fed8ec48b374d7b4bd96e46be7d8d433a5b1a7:450
-system/local/models/keyword/en-US/ALEXA/pryon.config:etc/pryon/ALEXA/pryon.config:fbf0a1696a05a604739e742e6b5dd0f5d4db0217efff43332940214f08245a8b:1332
-system/local/models/keyword/en-US/ALEXA/pryon.manifest:etc/pryon/ALEXA/pryon.manifest:23c61331d7a83b72b92edcb021ee06983fb4638dd882361b50d08f64a3ff2e7d:263
-system/local/models/keyword/en-US/ALEXA/runtime_stateless_standard.streaming.fixed.int16.onnx:etc/pryon/ALEXA/runtime_stateless_standard.streaming.fixed.int16.onnx:572ca159779c403a02298a016d0548ef618d68732f41709ba80b2235269868a9:1088514
-system/local/models/keyword/en-US/ALEXA/watermark.cfg.json:etc/pryon/ALEXA/watermark.cfg.json:b3afb6cceb910ed007bbaf5bfe4e694daf0fc2121011bbd546a05266d69b750c:1635
-system/local/models/keyword/en-US/ALEXA/words.shrunk.txt:etc/pryon/ALEXA/words.shrunk.txt:0fa556e2395dff236aaeb2902b3457be413b81d6343d2cbc4e815f453e9edd66:23
+system/lib/libtvm_modelops_ww_v5_cnet.so:lib/libtvm_modelops_ww_v5_cnet.so:fd51fe7e079131d18f5e3623c3425bcff27e97d605e7d5bfa073380f645c3280:120288
+system/local/models/keyword/en-US/ALEXA/checksum.txt:etc/pryon/alexa-en-US/checksum.txt:1deac5c44bb6fc24f035cdeb9244facf31d1ef6ee844fbe8ad756cd09f752bae:32
+system/local/models/keyword/en-US/ALEXA/cmvn.6khz.mat:etc/pryon/alexa-en-US/cmvn.6khz.mat:9294d116296d25a11ff94db8cac89cf6c3c86695e0f3b5d95407e80c12623737:183
+system/local/models/keyword/en-US/ALEXA/fingerprint-fe.config:etc/pryon/alexa-en-US/fingerprint-fe.config:701320d67750f4464d7bb7661e0c3751ab8e708b2a04664f6e8b051d66fa2327:931
+system/local/models/keyword/en-US/ALEXA/kw.cfg.json:etc/pryon/alexa-en-US/kw.cfg.json:b206edded3694991ab523b146f159c564c3248d987a63dd75ccef7d3b4dadf59:3243
+system/local/models/keyword/en-US/ALEXA/multiple_fe.json:etc/pryon/alexa-en-US/multiple_fe.json:680bc880da6b647299ed6bdf0b1982eba61a5bc9687ece84722c3a1334ce5a66:215
+system/local/models/keyword/en-US/ALEXA/nemort_scorer_config.json:etc/pryon/alexa-en-US/nemort_scorer_config.json:63825216212a27f4c70c72914652db3e9ca844e1ab5fda4700f8275e1c88ae32:1546
+system/local/models/keyword/en-US/ALEXA/op.cfg.json:etc/pryon/alexa-en-US/op.cfg.json:b702b3cee9b87e380fb5816432fed8ec48b374d7b4bd96e46be7d8d433a5b1a7:450
+system/local/models/keyword/en-US/ALEXA/pryon.config:etc/pryon/alexa-en-US/pryon.config:fbf0a1696a05a604739e742e6b5dd0f5d4db0217efff43332940214f08245a8b:1332
+system/local/models/keyword/en-US/ALEXA/pryon.manifest:etc/pryon/alexa-en-US/pryon.manifest:23c61331d7a83b72b92edcb021ee06983fb4638dd882361b50d08f64a3ff2e7d:263
+system/local/models/keyword/en-US/ALEXA/runtime_stateless_standard.streaming.fixed.int16.onnx:etc/pryon/alexa-en-US/runtime_stateless_standard.streaming.fixed.int16.onnx:572ca159779c403a02298a016d0548ef618d68732f41709ba80b2235269868a9:1088514
+system/local/models/keyword/en-US/ALEXA/watermark.cfg.json:etc/pryon/alexa-en-US/watermark.cfg.json:b3afb6cceb910ed007bbaf5bfe4e694daf0fc2121011bbd546a05266d69b750c:1635
+system/local/models/keyword/en-US/ALEXA/words.shrunk.txt:etc/pryon/alexa-en-US/words.shrunk.txt:0fa556e2395dff236aaeb2902b3457be413b81d6343d2cbc4e815f453e9edd66:23

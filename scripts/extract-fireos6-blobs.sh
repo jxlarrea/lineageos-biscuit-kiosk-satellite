@@ -20,6 +20,10 @@ HWC_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-headless-hwc-files.
 RADIO_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-radio-files.txt"
 BT_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-bluetooth-files.txt"
 PRYON_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-pryon-files.txt"
+DAVS_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-davs-model-files.txt"
+# Amazon's DAVS models: the private amazon-davs-models repository, checked out
+# next to this one unless DAVS_MODELS says where.
+DAVS_DIR="${DAVS_MODELS:-$REPO_ROOT/../amazon-davs-models}"
 COMMON_OUT="$CM14/vendor/amazon/mt8163-common"
 PROP="$COMMON_OUT/proprietary"
 mkdir -p "$WORKSPACE_DIR/tmp"
@@ -38,6 +42,7 @@ done
 [[ -f "$RADIO_MANIFEST" ]] || { echo "ERROR: missing Biscuit radio manifest: $RADIO_MANIFEST" >&2; exit 1; }
 [[ -f "$BT_MANIFEST" ]] || { echo "ERROR: missing Biscuit Bluetooth manifest: $BT_MANIFEST" >&2; exit 1; }
 [[ -f "$PRYON_MANIFEST" ]] || { echo "ERROR: missing Pryon manifest: $PRYON_MANIFEST" >&2; exit 1; }
+[[ -f "$DAVS_MANIFEST" ]] || { echo "ERROR: missing DAVS model manifest: $DAVS_MANIFEST" >&2; exit 1; }
 
 mkdir -p "$(dirname "$OTA")" "$(dirname "$SYSTEM_IMG")" "$WORKSPACE_DIR/tmp"
 if [[ ! -f "$OTA" ]]; then
@@ -147,7 +152,8 @@ while IFS=: read -r source destination expected_sha expected_size; do
 done < "$BT_MANIFEST"
 [[ "$bt_count" == 2 ]] || { echo "ERROR: expected 2 Bluetooth files, got $bt_count" >&2; exit 1; }
 
-# Amazon's wake word engine and the Alexa model, for biscuit-pryond.
+# Amazon's wake word engine, the TVM model library and the Alexa model, for
+# biscuit-pryond.
 pryon_count=0
 while IFS=: read -r source destination expected_sha expected_size; do
   [[ -z "$source" || "$source" == \#* ]] && continue
@@ -157,34 +163,70 @@ while IFS=: read -r source destination expected_sha expected_size; do
   extract_file "$SYSTEM_IMG" "$source" "$destination" "$expected_sha" "$expected_size"
   ((pryon_count += 1))
 done < "$PRYON_MANIFEST"
-[[ "$pryon_count" == 27 ]] || { echo "ERROR: expected 27 Pryon files, got $pryon_count" >&2; exit 1; }
-# Fire OS hears "stop" only for a few seconds after "Alexa": the spotter's
-# state machine starts asleep, where only ALEXA counts, and the model scores
-# a "stop" on its own at 0.20 to 0.41 against its 0.55. Kiosk Satellite arms
-# the stop word itself while a timer rings or a reply plays, so STOP counts
-# while asleep and is accepted from 0.18. Pryon reports an accept as soon as
-# the word crosses the line, about 1.2 seconds before it would report the
-# same word as a near miss. It still reports near misses from 0.05, for a
-# more sensitive setting. Pryon reports checksum.txt but does not check it.
-python3 - "$STAGED_PROP/etc/pryon/ALEXA" <<'PY'
-import json, sys
-model = sys.argv[1]
-op = json.load(open(model + "/op.cfg.json"))
-rules = op["sleep"]["rules"]
-if not any(r["name"] == "STOP" for r in rules):
-    rules.append({"name": "STOP", "next": "sleep"})
-json.dump(op, open(model + "/op.cfg.json", "w"), indent=2)
-kw = json.load(open(model + "/kw.cfg.json"))
-for spotter in kw["keyword-orchestra"]["keyword-spotters"]:
-    if spotter["name"] == "STOP":
+[[ "$pryon_count" == 28 ]] || { echo "ERROR: expected 28 Pryon files, got $pryon_count" >&2; exit 1; }
+
+# Amazon's other wake word models, every locale. DAVS hands them only to a
+# registered Echo, so they come from the amazon-davs-models repository,
+# checked against the manifest scripts/make-davs-model-manifest.py wrote.
+[[ -d "$DAVS_DIR" ]] || {
+  echo "ERROR: no DAVS models at $DAVS_DIR: check out the private amazon-davs-models repository there or set DAVS_MODELS" >&2; exit 1;
+}
+davs_count=0
+while IFS=: read -r path expected_sha expected_size; do
+  [[ -z "$path" || "$path" == \#* ]] && continue
+  [[ "$path" != /* && "$path" != *".."* ]] || {
+    echo "ERROR: unsafe path in DAVS manifest: $path" >&2; exit 1;
+  }
+  model_set="${path%%/*}"
+  source_file="$DAVS_DIR/$path"
+  [[ -f "$source_file" ]] || { echo "ERROR: missing DAVS model file: $path" >&2; exit 1; }
+  [[ "$(stat -c %s "$source_file")" == "$expected_size" ]] || { echo "ERROR: wrong size: $path" >&2; exit 1; }
+  [[ "$(sha256sum "$source_file" | awk '{print $1}')" == "$expected_sha" ]] || {
+    echo "ERROR: SHA-256 mismatch: $path" >&2; exit 1;
+  }
+  install -D -m 0644 "$source_file" "$STAGED_PROP/etc/pryon/$path"
+  copy_files+=("vendor/amazon/mt8163-common/proprietary/etc/pryon/$path:\$(TARGET_COPY_OUT_SYSTEM)/etc/pryon/$path")
+  ((davs_count += 1))
+done < "$DAVS_MANIFEST"
+[[ "$davs_count" -gt 0 ]] || { echo "ERROR: the DAVS manifest lists no files" >&2; exit 1; }
+
+# Amazon's models hear "stop" only for a few seconds after the wake word: the
+# spotter's state machine starts asleep, where STOP does not count, and the
+# firmware's Alexa model scores a "stop" on its own at 0.20 to 0.41 against
+# its 0.55. Kiosk Satellite arms the stop word itself while a timer rings or
+# a reply plays, so in every model STOP counts while asleep and is accepted
+# from 0.18. Pryon reports an accept as soon as the word crosses the line,
+# about 1.2 seconds before it would report the same word as a near miss. It
+# still reports near misses from 0.05, for a more sensitive setting. The
+# newer models keep these files in subfolders, some in two. Pryon reports
+# checksum.txt but does not check it.
+python3 - "$STAGED_PROP/etc/pryon" <<'PY'
+import json, pathlib, sys
+patched = set()
+for kw_path in pathlib.Path(sys.argv[1]).rglob("kw.cfg.json"):
+    kw = json.loads(kw_path.read_text())
+    spotters = kw.get("keyword-orchestra", {}).get("keyword-spotters", [])
+    stops = [s for s in spotters if s.get("name") == "STOP"]
+    if not stops:
+        continue
+    for spotter in stops:
         thresholds = spotter["spotter"]["classification-thresholds"]
         thresholds["accept-threshold"] = 0.18
         thresholds["notify-threshold"] = 0.05
-json.dump(kw, open(model + "/kw.cfg.json", "w"), indent=2)
+    kw_path.write_text(json.dumps(kw, indent=2))
+    op_path = kw_path.with_name("op.cfg.json")
+    op = json.loads(op_path.read_text()) if op_path.exists() else {}
+    if "sleep" in op:
+        rules = op["sleep"]["rules"]
+        if not any(r["name"] == "STOP" for r in rules):
+            rules.append({"name": "STOP", "next": "sleep"})
+        op_path.write_text(json.dumps(op, indent=2))
+    patched.add(kw_path.relative_to(sys.argv[1]).parts[0])
+print(f"Let the stop word fire without the wake word in {len(patched)} model sets.")
 PY
-grep -q '"STOP"' "$STAGED_PROP/etc/pryon/ALEXA/op.cfg.json" &&
-  grep -q '"notify-threshold": 0.05' "$STAGED_PROP/etc/pryon/ALEXA/kw.cfg.json" &&
-  grep -q '"accept-threshold": 0.18' "$STAGED_PROP/etc/pryon/ALEXA/kw.cfg.json" || {
+grep -q '"STOP"' "$STAGED_PROP/etc/pryon/alexa-en-US/op.cfg.json" &&
+  grep -q '"notify-threshold": 0.05' "$STAGED_PROP/etc/pryon/alexa-en-US/kw.cfg.json" &&
+  grep -q '"accept-threshold": 0.18' "$STAGED_PROP/etc/pryon/alexa-en-US/kw.cfg.json" || {
   echo "ERROR: could not let the stop word fire without Alexa" >&2; exit 1;
 }
 
@@ -269,4 +311,4 @@ sync_proprietary_tree
 install_if_changed "$VENDOR_MK_TMP" "$COMMON_OUT/mt8163-common-vendor.mk"
 install_if_changed "$MINIMAL_VENDOR_MK_TMP" "$COMMON_OUT/mt8163-common-minimal-vendor.mk"
 
-echo "Staged $audio_count verified Fire OS 6 audio blobs, 40 algorithm files, $hwc_count headless HWC blob, $radio_count Biscuit radio files, $bt_count Bluetooth files, $pryon_count Pryon files, and a minimal radio makefile."
+echo "Staged $audio_count verified Fire OS 6 audio blobs, 40 algorithm files, $hwc_count headless HWC blob, $radio_count Biscuit radio files, $bt_count Bluetooth files, $pryon_count Pryon files, $davs_count DAVS model files, and a minimal radio makefile."

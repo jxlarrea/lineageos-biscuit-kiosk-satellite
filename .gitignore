@@ -9,3 +9,4 @@ ota_biscuit_cm14.1_*.zip.sha256
 .internal
 .claude/
 AGENTS.md
+__pycache__/
