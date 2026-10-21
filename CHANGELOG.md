@@ -2,10 +2,10 @@
 
 All notable changes to LineageOS for the Echo Dot (2nd Gen), Kiosk Satellite Edition are documented here. Images are published on the [releases page](https://github.com/jxlarrea/lineageos-biscuit-kiosk-satellite/releases).
 
-## Unreleased
+## 2026.10.3 - 2026-10-21
 
 ### Added
-- **Amazon's wake words.** The image now includes Amazon's own wake word engine with its models for Alexa, Echo, Computer, Amazon and Ziggy in 17 locales, from English and Spanish to Japanese and Arabic. Kiosk Satellite can listen the way an Echo does: choose **Amazon** as the wake word engine and the language of its models, in a version that supports it. A plain "stop" also stops a ringing timer or a reply, where Amazon's models only heard "stop" right after the wake word.
+- **Amazon's wake words.** The image now includes Amazon's own wake word engine with its models for Alexa, Echo, Computer, Amazon and Ziggy in 17 locales, from English and Spanish to Japanese and Arabic. Kiosk Satellite can listen the way an Echo does: choose **Amazon** as the wake word engine and the language of its models. Needs a Kiosk Satellite version newer than 2026.10.33. A plain "stop" also stops a ringing timer or a reply, where Amazon's models only heard "stop" right after the wake word.
 
 ### Changed
 - **Installing into both slots, slot A first.** The Dot's bootloader always starts slot A's kernel, whichever slot is active. A Dot with the image only in slot B started another kernel and kept restarting. The installation now installs into slot A first, checks that it boots, then installs into slot B and checks that too.
