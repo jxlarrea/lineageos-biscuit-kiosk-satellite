@@ -11,6 +11,7 @@ All notable changes to LineageOS for the Echo Dot (2nd Gen), Kiosk Satellite Edi
 - **Getting into TWRP on a Dot that does not boot.** The TWRP guide again says to hold the **+** button while plugging the Dot in, which starts TWRP on amonet v2. A new section covers a Dot that keeps restarting after an install, and the installation now stops when a TWRP install fails.
 - **A Dot that keeps restarting after the second install.** The installation no longer installs the image into the second slot. A Dot that booted it from slot B kept restarting while slot A with the same image worked, so the image now goes into slot A only.
 - **Joining a Wi-Fi network with spaces in its name.** The `wifi connect` command in the docs now wraps the whole command in double quotes. Without them, `adb shell` split a Wi-Fi name or password with spaces into separate words.
+- **Build tests.** `make test` passes again. The tests now know all 37 framework patches and the wake word service, look for the countdown command in the device command guide and say to set `BISCUIT_WORKSPACE` when they need the CM14.1 checkout.
 
 ## 2026.10.2 - 2026-10-18
 

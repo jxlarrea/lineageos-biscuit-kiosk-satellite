@@ -14,6 +14,6 @@ grep -Fq 'com.amazon.biscuit.service.COUNTDOWN_PROGRESS' \
     "$REPO_ROOT/device/amazon/biscuit/biscuit-service/service/AndroidManifest.xml"
 grep -Fq '!strncmp(line, "COUNTDOWN ", 10)' \
     "$REPO_ROOT/device/amazon/biscuit/biscuit-service/biscuit-ledd.cpp"
-grep -Fq "adb shell biscuit_service countdown set '<remaining-ms>' '<total-ms>'" "$REPO_ROOT/README.md"
+grep -Fq "adb shell biscuit_service countdown set '<remaining-ms>' '<total-ms>'" "$REPO_ROOT/docs/device-commands.md"
 
 echo 'PASS countdown renderer and public contract'

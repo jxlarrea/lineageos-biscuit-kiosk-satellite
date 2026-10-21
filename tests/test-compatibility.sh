@@ -16,7 +16,7 @@ WORKSPACE="${BISCUIT_WORKSPACE:-$ROOT/workspace}/cm14.1"
 [[ -d "$DEVICE" ]]
 [[ -d "$VENDOR" ]]
 [[ ! -e "$ROOT/cm14.1" ]]
-[[ "$(find "$FULL_PATCH_DIR" -maxdepth 1 -name '*.patch' | wc -l)" == 28 ]]
+[[ "$(find "$FULL_PATCH_DIR" -maxdepth 1 -name '*.patch' | wc -l)" == 37 ]]
 [[ "$(find "$MINIMAL_PATCH_DIR" -maxdepth 1 -name '*.patch' | wc -l)" == 7 ]]
 [[ "$(find "$KERNEL_PATCH_DIR" -maxdepth 1 -name '*.patch' | wc -l)" == 3 ]]
 
@@ -49,6 +49,15 @@ printf '%s\n' "$FULL_PATCH_DIR"/*.patch | sed 's#.*/##' | diff -u - <(cat <<'EOF
 026-biscuit-audio-route-wrapper.patch
 027-biscuit-audio-route-forwarding.patch
 028-biscuit-audio-gpio-mic-mute.patch
+029-biscuit-zram-lzo.patch
+030-biscuit-action-button-broadcast.patch
+031-biscuit-speaker-amp-after-codec.patch
+032-headless-framebuffer-surface-usage.patch
+033-biscuit-wifi-power-save-off.patch
+034-biscuit-drop-asp-pipeline-log.patch
+035-biscuit-speaker-highpass-limiter.patch
+036-biscuit-mic-array-speaker-null.patch
+037-biscuit-volume-button-claim.patch
 EOF
 )
 
@@ -109,6 +118,8 @@ grep -Fqx '    BiscuitService' "$DEVICE/device.mk"
 grep -Fqx '    biscuit_service \' "$DEVICE/device.mk"
 grep -Fqx '    biscuit-ledd \' "$DEVICE/device.mk"
 grep -Fqx '    biscuit-ledctl \' "$DEVICE/device.mk"
+grep -Fqx '    biscuit-pryond \' "$DEVICE/device.mk"
+grep -Fqx '    ro.biscuit.pryon=1' "$DEVICE/device.mk"
 grep -Fqx '    i2c-poke \' "$DEVICE/device.mk"
 grep -Fqx '    audio_effects.conf \' "$DEVICE/device.mk"
 grep -Fqx '    libstagefright_soft_flacdec \' "$DEVICE/device.mk"
@@ -125,6 +136,8 @@ grep -Fqx 'PRODUCT_PACKAGES := $(filter-out $(BISCUIT_NO_SCREEN_PACKAGES),$(PROD
 
 grep -Fqx '    chown root audio /sys/devices/soc/1000b000.pinctrl/mt_gpio' "$DEVICE/rootdir/init.device.rc"
 grep -Fqx '    chmod 0664 /sys/devices/soc/1000b000.pinctrl/mt_gpio' "$DEVICE/rootdir/init.device.rc"
+grep -Fqx 'service biscuit-pryond /system/bin/biscuit-pryond' "$DEVICE/rootdir/init.device.rc"
+grep -Fqx '    socket biscuit-pryon stream 0666 system system' "$DEVICE/rootdir/init.device.rc"
 grep -Fqx '# ponytail: CM14 Biscuit uses STA only; P2P-only fields make STA-only wpa_supplicant abort.' "$DEVICE/wpa_supplicant_overlay.conf"
 ! grep -Fq 'p2p_no_group_iface' "$DEVICE/wpa_supplicant_overlay.conf"
 
@@ -137,6 +150,10 @@ grep -Fqx 'MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/fireos6-audio-files.
 grep -Fqx 'HWC_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-headless-hwc-files.txt"' "$EXTRACTOR"
 grep -Fqx 'RADIO_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-radio-files.txt"' "$EXTRACTOR"
 grep -Fqx 'BT_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-bluetooth-files.txt"' "$EXTRACTOR"
+grep -Fqx 'PRYON_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-pryon-files.txt"' "$EXTRACTOR"
+[[ "$(grep -vc '^#' "$VENDOR/biscuit-pryon-files.txt")" == 27 ]]
+grep -Fqx 'system/lib/libpryon.so:lib/pryon/libpryon.so:920dc04d2253706a1c20b14477a3460bdc36d7ee84b3fb27a55cdf5823189748:10388280' "$VENDOR/biscuit-pryon-files.txt"
+grep -Fq 'thresholds["accept-threshold"] = 0.18' "$EXTRACTOR"
 grep -Fqx 'MINIMAL_VENDOR_MK_TMP="$TMP/mt8163-common-minimal-vendor.mk"' "$EXTRACTOR"
 grep -Fq 'Fire OS 6.5.7.4 MT8163 radio/Wi-Fi closure for framework-free Biscuit minimal.' "$EXTRACTOR"
 

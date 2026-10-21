@@ -8,6 +8,10 @@ CORE="$CM14/system/core"
 PATCH="$ROOT/patches/full/002-amonet2-bcb-slotselect.patch"
 MINIMAL_PATCH="$ROOT/patches/minimal/001-amonet2-bcb-slotselect.patch"
 STAGE="$ROOT/scripts/stage-tree.sh"
+[[ -d "$CORE" ]] || {
+  echo "ERROR: no CM14.1 checkout at $CM14. Set BISCUIT_WORKSPACE to the build workspace." >&2
+  exit 1
+}
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
