@@ -15,6 +15,14 @@ LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
+LOCAL_MODULE := biscuit-pryond
+LOCAL_SRC_FILES := biscuit-pryond.cpp
+LOCAL_CPPFLAGS := -std=gnu++11 -Wall -Werror
+LOCAL_SHARED_LIBRARIES := libdl
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
 LOCAL_MODULE := i2c-poke
 LOCAL_SRC_FILES := i2c-poke.cpp
 LOCAL_CPPFLAGS := -std=gnu++11 -Wall -Werror

@@ -19,6 +19,7 @@ STOCK_HWC_OTA_SHA256="28bc050e4a2af79c9ca66e251de7bf04c42ce8d7934dd97673d3d04f5f
 HWC_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-headless-hwc-files.txt"
 RADIO_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-radio-files.txt"
 BT_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-bluetooth-files.txt"
+PRYON_MANIFEST="$REPO_ROOT/vendor/amazon/mt8163-common/biscuit-pryon-files.txt"
 COMMON_OUT="$CM14/vendor/amazon/mt8163-common"
 PROP="$COMMON_OUT/proprietary"
 mkdir -p "$WORKSPACE_DIR/tmp"
@@ -36,6 +37,7 @@ done
 [[ -f "$HWC_MANIFEST" ]] || { echo "ERROR: missing headless HWC manifest: $HWC_MANIFEST" >&2; exit 1; }
 [[ -f "$RADIO_MANIFEST" ]] || { echo "ERROR: missing Biscuit radio manifest: $RADIO_MANIFEST" >&2; exit 1; }
 [[ -f "$BT_MANIFEST" ]] || { echo "ERROR: missing Biscuit Bluetooth manifest: $BT_MANIFEST" >&2; exit 1; }
+[[ -f "$PRYON_MANIFEST" ]] || { echo "ERROR: missing Pryon manifest: $PRYON_MANIFEST" >&2; exit 1; }
 
 mkdir -p "$(dirname "$OTA")" "$(dirname "$SYSTEM_IMG")" "$WORKSPACE_DIR/tmp"
 if [[ ! -f "$OTA" ]]; then
@@ -145,6 +147,47 @@ while IFS=: read -r source destination expected_sha expected_size; do
 done < "$BT_MANIFEST"
 [[ "$bt_count" == 2 ]] || { echo "ERROR: expected 2 Bluetooth files, got $bt_count" >&2; exit 1; }
 
+# Amazon's wake word engine and the Alexa model, for biscuit-pryond.
+pryon_count=0
+while IFS=: read -r source destination expected_sha expected_size; do
+  [[ -z "$source" || "$source" == \#* ]] && continue
+  [[ "$destination" != /* && "$destination" != *".."* ]] || {
+    echo "ERROR: unsafe destination in Pryon manifest: $destination" >&2; exit 1;
+  }
+  extract_file "$SYSTEM_IMG" "$source" "$destination" "$expected_sha" "$expected_size"
+  ((pryon_count += 1))
+done < "$PRYON_MANIFEST"
+[[ "$pryon_count" == 27 ]] || { echo "ERROR: expected 27 Pryon files, got $pryon_count" >&2; exit 1; }
+# Fire OS hears "stop" only for a few seconds after "Alexa": the spotter's
+# state machine starts asleep, where only ALEXA counts, and the model scores
+# a "stop" on its own at 0.20 to 0.41 against its 0.55. Kiosk Satellite arms
+# the stop word itself while a timer rings or a reply plays, so STOP counts
+# while asleep and is accepted from 0.18. Pryon reports an accept as soon as
+# the word crosses the line, about 1.2 seconds before it would report the
+# same word as a near miss. It still reports near misses from 0.05, for a
+# more sensitive setting. Pryon reports checksum.txt but does not check it.
+python3 - "$STAGED_PROP/etc/pryon/ALEXA" <<'PY'
+import json, sys
+model = sys.argv[1]
+op = json.load(open(model + "/op.cfg.json"))
+rules = op["sleep"]["rules"]
+if not any(r["name"] == "STOP" for r in rules):
+    rules.append({"name": "STOP", "next": "sleep"})
+json.dump(op, open(model + "/op.cfg.json", "w"), indent=2)
+kw = json.load(open(model + "/kw.cfg.json"))
+for spotter in kw["keyword-orchestra"]["keyword-spotters"]:
+    if spotter["name"] == "STOP":
+        thresholds = spotter["spotter"]["classification-thresholds"]
+        thresholds["accept-threshold"] = 0.18
+        thresholds["notify-threshold"] = 0.05
+json.dump(kw, open(model + "/kw.cfg.json", "w"), indent=2)
+PY
+grep -q '"STOP"' "$STAGED_PROP/etc/pryon/ALEXA/op.cfg.json" &&
+  grep -q '"notify-threshold": 0.05' "$STAGED_PROP/etc/pryon/ALEXA/kw.cfg.json" &&
+  grep -q '"accept-threshold": 0.18' "$STAGED_PROP/etc/pryon/ALEXA/kw.cfg.json" || {
+  echo "ERROR: could not let the stop word fire without Alexa" >&2; exit 1;
+}
+
 for config in \
   etc/a2dp_audio_policy_configuration.xml \
   etc/audio_device.xml \
@@ -226,4 +269,4 @@ sync_proprietary_tree
 install_if_changed "$VENDOR_MK_TMP" "$COMMON_OUT/mt8163-common-vendor.mk"
 install_if_changed "$MINIMAL_VENDOR_MK_TMP" "$COMMON_OUT/mt8163-common-minimal-vendor.mk"
 
-echo "Staged $audio_count verified Fire OS 6 audio blobs, 40 algorithm files, $hwc_count headless HWC blob, $radio_count Biscuit radio files, $bt_count Bluetooth files, and a minimal radio makefile."
+echo "Staged $audio_count verified Fire OS 6 audio blobs, 40 algorithm files, $hwc_count headless HWC blob, $radio_count Biscuit radio files, $bt_count Bluetooth files, $pryon_count Pryon files, and a minimal radio makefile."

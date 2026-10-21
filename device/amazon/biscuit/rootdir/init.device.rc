@@ -34,6 +34,14 @@ service ks_install /system/bin/sh /system/etc/ks-install.sh
     disabled
     oneshot
 
+# Amazon's wake word engine for Kiosk Satellite. Idle until an app connects,
+# so any app may: it hears only the audio that app sends it.
+service biscuit-pryond /system/bin/biscuit-pryond
+    class main
+    user nobody
+    group nobody
+    socket biscuit-pryon stream 0666 system system
+
 service biscuit-ledd /system/bin/biscuit-ledd
     class main
     user root

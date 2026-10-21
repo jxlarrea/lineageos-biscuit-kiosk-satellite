@@ -70,6 +70,7 @@ PRODUCT_COPY_FILES_OVERRIDES += \
 PRODUCT_PACKAGES += \
     biscuit-ledd \
     biscuit-ledctl \
+    biscuit-pryond \
     i2c-poke \
     biscuit_service \
     BiscuitService
@@ -107,7 +108,8 @@ PRODUCT_COPY_FILES += \
 
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.biscuit.action_broadcast=1 \
-    ro.biscuit.volume_claim=1
+    ro.biscuit.volume_claim=1 \
+    ro.biscuit.pryon=1
 
 # Without these every app, system_server included, gets ART's 16 MB default
 # heap limit.
