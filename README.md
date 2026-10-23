@@ -102,7 +102,7 @@ See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change 
 
 6. Check that this slot boots too, the same way as in step 4. If it keeps restarting, unplug the Dot, hold the **+** button and plug it back in to start TWRP. Then run `adb shell bcbtool set_active` with the slot you started from and `adb reboot`. That boots the copy that worked.
 
-To update the image later, follow the same steps but skip `twrp wipe data`, which keeps Kiosk Satellite and its settings.
+To update the image later, follow the same steps but skip `twrp wipe data`, which keeps Kiosk Satellite and its settings. Starting with the first release after 2026.10.3, the Dot can also update itself. See [System updates](docs/device-commands.md#system-updates).
 
 ## After installing
 

@@ -129,6 +129,18 @@ Before any installation, verify the generated updater. A safe Biscuit custom OTA
 
 Install from TWRP only, into both slots and slot A first, as the [README](../README.md#installing) describes. The bootloader always loads `boot_a`, whatever amonet's BCB in `/misc` says: with slot B active and marked successful, a Dot ran slot A's kernel. The kernel drops the bootloader's `androidboot.slot_suffix` (`CONFIG_CMDLINE_FORCE`), so fs_mgr picks the slot from that BCB, which `bcbtool set_active` writes. A Dot booted with slot B active runs `boot_a` with `system_b`.
 
+## Publishing a release
+
+The full build stamps `ro.biscuit.release` with the newest heading in `CHANGELOG.md`. While that heading is `Unreleased`, it stamps the release before it with `-dev` after it, such as `2026.10.3-dev`. `BISCUIT_RELEASE` overrides it. So rename the `Unreleased` heading to the release before the build that gets published. A Dot only installs a release whose `system/build.prop` says the same version as its GitHub tag.
+
+Then sign the zip and upload the `.sig` next to it:
+
+```sh
+scripts/sign-release.sh lineageos-biscuit-kiosk-satellite-<version>.zip
+```
+
+The script signs with the private key in `~/.config/biscuit-ota/release-key.pem` or `BISCUIT_OTA_KEY` and checks the signature against `device/amazon/biscuit/biscuit-service/ota/release-key.pem`, the public key the image ships. Dots only install a release that has a valid `.sig`. A release without one has to be installed by hand. Keep a backup of the private key. Without it, no new release installs on its own until the Dots get an image with a new public key by hand.
+
 ## Patch application model
 
 Patch names are numbered because their order is part of the build contract. `scripts/apply-patches.sh` applies every `*.patch` in the selected directory lexically, fuzz-free, and idempotently. Shared patches are intentionally duplicated between `patches/full/` and `patches/minimal/` because the selected profile must be independently reproducible.

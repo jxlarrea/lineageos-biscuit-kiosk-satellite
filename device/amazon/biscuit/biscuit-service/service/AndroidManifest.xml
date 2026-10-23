@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REBOOT" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application android:label="Biscuit Service">
         <receiver android:name=".BiscuitService$BootReceiver">
@@ -16,6 +19,17 @@
                 <action android:name="android.media.VOLUME_CHANGED_ACTION" />
                 <action android:name="com.amazon.biscuit.service.MICROPHONE_MUTE_CHANGED" />
                 <action android:name="com.amazon.biscuit.service.MICROPHONE_MUTE_TOGGLE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- biscuit_service update check|install. Only senders holding
+             REBOOT, such as root, get through. -->
+        <receiver
+            android:name=".SystemUpdate$Receiver"
+            android:permission="android.permission.REBOOT">
+            <intent-filter>
+                <action android:name="com.amazon.biscuit.service.SYSTEM_UPDATE_CHECK" />
+                <action android:name="com.amazon.biscuit.service.SYSTEM_UPDATE_INSTALL" />
             </intent-filter>
         </receiver>
 

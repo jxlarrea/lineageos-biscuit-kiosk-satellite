@@ -19,6 +19,17 @@ CCACHE_DIR="${CCACHE_DIR:-$WORKSPACE_DIR/ccache}"
 CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-50G}"
 LUNCH_TARGET="${LUNCH_TARGET:-cm_biscuit-userdebug}"
 
+# The release this build is, for ro.biscuit.release: the newest CHANGELOG.md
+# heading. While that heading is Unreleased, it is the release before it with
+# -dev after it. System updates compare it with the GitHub releases.
+release_version() {
+  awk '/^## / {
+    if ($2 == "Unreleased") { dev = 1; next }
+    print $2 (dev ? "-dev" : ""); exit
+  }' "$REPO_ROOT/CHANGELOG.md"
+}
+BISCUIT_RELEASE="${BISCUIT_RELEASE:-$(release_version)}"
+
 case "$LUNCH_TARGET" in
   cm_biscuit-userdebug)
     PATCH_PROFILE="${PATCH_PROFILE:-full}"
@@ -159,13 +170,18 @@ docker run -d \
     set -e
     source build/envsetup.sh >/dev/null
     export OUT_DIR='$OUT_DIR'
+    export BISCUIT_RELEASE='$BISCUIT_RELEASE'
     export USE_CCACHE=1
     export CCACHE_DIR='$CCACHE_DIR'
     prebuilts/misc/linux-x86/ccache/ccache -M '$CCACHE_MAXSIZE' >/dev/null || true
     export PATH=\"\$OUT_DIR/host/linux-x86/bin:\$PATH\"
     lunch '$LUNCH_TARGET' >/tmp/lunch.log
+    # build.prop does not depend on BISCUIT_RELEASE, so a build that only
+    # changes the release would keep the old ro.biscuit.release.
+    rm -f '$OUT_DIR/target/product/biscuit/system/build.prop' \
+      '$OUT_DIR/target/product/biscuit/obj/ETC/system_build_prop_intermediates/build.prop'
     make -j'$BUILD_JOBS' '$BUILD_TARGET'
   "
 
-echo "Started $CONTAINER ($BUILD_TARGET, $LUNCH_TARGET, PATCH_PROFILE=$PATCH_PROFILE)."
+echo "Started $CONTAINER ($BUILD_TARGET, $LUNCH_TARGET, PATCH_PROFILE=$PATCH_PROFILE, release $BISCUIT_RELEASE)."
 echo "Monitor: docker logs -f $CONTAINER"

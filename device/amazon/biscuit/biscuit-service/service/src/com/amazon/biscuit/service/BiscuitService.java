@@ -15,9 +15,11 @@ import android.os.IBinder;
 import android.os.RemoteException;
 
 import java.io.BufferedReader;
+import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.util.List;
 
 public final class BiscuitService extends Service {
@@ -124,6 +126,20 @@ public final class BiscuitService extends Service {
                 return true;
             }
         }
+
+        public String systemUpdateStatus() throws RemoteException {
+            return SystemUpdate.get(BiscuitService.this).status();
+        }
+
+        public boolean checkSystemUpdate() throws RemoteException {
+            return SystemUpdate.get(BiscuitService.this).check();
+        }
+
+        public boolean installSystemUpdate() throws RemoteException {
+            SystemUpdate update = SystemUpdate.get(BiscuitService.this);
+            if (!update.mayInstall(Binder.getCallingUid())) throw new SecurityException("not the device owner");
+            return update.install();
+        }
     };
 
     // Callers hold mClaimLock.
@@ -156,7 +172,9 @@ public final class BiscuitService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && VOLUME_CHANGED.equals(intent.getAction())) {
+        if (intent != null && Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+            SystemUpdate.get(this).resume();
+        } else if (intent != null && VOLUME_CHANGED.equals(intent.getAction())) {
             AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
             int stream = intent.getIntExtra(EXTRA_STREAM_TYPE, AudioManager.STREAM_MUSIC);
             int current = intent.getIntExtra(EXTRA_STREAM_VALUE, audio.getStreamVolume(stream));
@@ -201,6 +219,13 @@ public final class BiscuitService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return mBinder;
+    }
+
+    // dumpsys activity service com.amazon.biscuit.service/.BiscuitService,
+    // which biscuit_service update status runs.
+    @Override
+    protected void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
+        writer.println("System update: " + SystemUpdate.get(this).status());
     }
 
     private static void checkName(String name) throws RemoteException {

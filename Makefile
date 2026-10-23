@@ -23,3 +23,4 @@ test:
 	bash tests/test-amonet2-bcb-slotselect.sh
 	python3 tests/test-ota-slot-paths.py
 	bash tests/test-led-countdown.sh
+	bash tests/test-system-update.sh

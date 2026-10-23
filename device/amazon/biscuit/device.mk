@@ -112,6 +112,20 @@ PRODUCT_PROPERTY_OVERRIDES += \
     ro.biscuit.volume_claim=1 \
     ro.biscuit.pryon=1
 
+# System updates through BiscuitService and TWRP. scripts/build.sh sets
+# BISCUIT_RELEASE from the newest CHANGELOG.md heading, with -dev after it
+# while that heading is Unreleased.
+PRODUCT_COPY_FILES += \
+    device/amazon/biscuit/biscuit-service/ota/twrp-update.sh:$(TARGET_COPY_OUT_SYSTEM)/etc/biscuit-ota/twrp-update.sh \
+    device/amazon/biscuit/biscuit-service/ota/release-key.pem:$(TARGET_COPY_OUT_SYSTEM)/etc/biscuit-ota/release-key.pem
+
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.biscuit.ota=1
+ifneq ($(BISCUIT_RELEASE),)
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.biscuit.release=$(BISCUIT_RELEASE)
+endif
+
 # Without these every app, system_server included, gets ART's 16 MB default
 # heap limit.
 $(call inherit-product, frameworks/native/build/phone-hdpi-512-dalvik-heap.mk)
