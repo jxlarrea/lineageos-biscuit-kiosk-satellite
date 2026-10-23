@@ -10,3 +10,5 @@ ota_biscuit_cm14.1_*.zip.sha256
 .claude/
 AGENTS.md
 __pycache__/
+.remember/
+handoff*
