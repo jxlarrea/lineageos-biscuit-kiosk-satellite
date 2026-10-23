@@ -2,10 +2,10 @@
 
 All notable changes to LineageOS for the Echo Dot (2nd Gen), Kiosk Satellite Edition are documented here. Images are published on the [releases page](https://github.com/jxlarrea/lineageos-biscuit-kiosk-satellite/releases).
 
-## Unreleased
+## 2026.10.4 - 2026-10-23
 
 ### Added
-- **System updates.** The Dot can now update itself. It checks GitHub for a newer release, downloads it and checks its signature, then installs it from TWRP into slot A and, once slot A boots, into slot B. Each slot takes the Dot offline for about a minute and a half. Kiosk Satellite and its settings stay. `biscuit_service update status`, `check` and `install` drive it from adb. Kiosk Satellite can offer it as an update in Home Assistant. This release itself has to be installed by hand. To test a release before publishing it, `persist.biscuit.ota.releases` points the Dot at another releases list.
+- **System updates.** The Dot can now update itself. It checks GitHub for a newer release, downloads it and checks its signature, then installs it from TWRP into slot A and, once slot A boots, into slot B. Each slot takes the Dot offline for about a minute and a half. Kiosk Satellite and its settings stay. `biscuit_service update status`, `check` and `install` drive it from adb. Kiosk Satellite can offer it as an update in Home Assistant with a version newer than 2026.10.37. This release itself has to be installed by hand. To test a release before publishing it, `persist.biscuit.ota.releases` points the Dot at another releases list.
 
 ### Changed
 - **Clearer docs.** The Kiosk Satellite Edition page now covers what the image does for you, the settings you can change and what it leaves out. The README has a new Updating section. The build guide lists every patch and the changes outside them.
