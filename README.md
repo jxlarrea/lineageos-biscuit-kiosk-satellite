@@ -13,10 +13,11 @@ A LineageOS 14.1 (Android 7.1.2) image for the 2nd generation Echo Dot (`biscuit
 - **Steadier Wi-Fi between kiosks.** Wi-Fi power saving is off. With it on, about one broadcast in five never arrived, and wake word arbitration between kiosks runs on those broadcasts.
 - **A steady light ring and a clean speaker.** The light ring no longer strobes while Kiosk Satellite animates it, and it goes back to Kiosk Satellite's colors after the volume overlay. The speaker no longer crackles on the first playback after boot.
 - **Automatic Kiosk Satellite installation.** On first boot the latest Kiosk Satellite release is downloaded, installed, given every permission and made the device owner, so its updates install without a confirmation. No adb grants needed.
+- **OTA Updates and from Home Assistant.** The Dot installs new releases of this image itself. Home Assistant shows a new release on the Dot's **Firmware** entity and Kiosk Satellite shows it in its remote admin. One click downloads it, checks its signature and installs it, with no TWRP or adb needed.
 - **The Action button as a broadcast.** The Action button reaches apps as a broadcast, so newer Kiosk Satellite versions do not need an accessibility service to receive it.
 - **Volume buttons for a Music Assistant group.** Kiosk Satellite can take over the volume buttons, so they change the volume of the Music Assistant group the Dot plays in, or of a player it follows, instead of the Dot's own. Set **Volume buttons control the player** to **While the player is playing** under Media Player. The buttons go back to the Dot's own volume when the Dot plays alone or Kiosk Satellite stops.
 
-See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change and how it was measured.
+See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for the settings you can change and what the image leaves out.
 
 ## Before you start
 
@@ -102,7 +103,7 @@ See [Kiosk Satellite Edition](docs/kiosk-satellite-edition.md) for every change 
 
 6. Check that this slot boots too, the same way as in step 4. If it keeps restarting, unplug the Dot, hold the **+** button and plug it back in to start TWRP. Then run `adb shell bcbtool set_active` with the slot you started from and `adb reboot`. That boots the copy that worked.
 
-To update the image later, follow the same steps but skip `twrp wipe data`, which keeps Kiosk Satellite and its settings. Starting with the first release after 2026.10.3, the Dot can also update itself. See [System updates](docs/device-commands.md#system-updates).
+To update the image later, see [Updating](#updating).
 
 ## After installing
 
@@ -134,6 +135,16 @@ To update the image later, follow the same steps but skip `twrp wipe data`, whic
 4. **Set up Kiosk Satellite.** Open `http://<dot ip>:2324` in a browser. In the setup wizard, set an admin password, your Home Assistant connection and the wake word. Then add the Dot in Home Assistant under **Settings > Devices & services**, where it shows up as discovered. The [Echo Dot guide](https://github.com/jxlarrea/kiosk-satellite/blob/main/docs/echo-dot.md) covers the buttons, the light ring and the other Kiosk Satellite features on the Dot.
 
 [Device commands](docs/device-commands.md) lists what else you can control from `adb shell`.
+
+## Updating
+
+Starting with the first release after 2026.10.3, the Dot updates itself. Home Assistant shows a new release on the Dot's **Firmware** update entity. Kiosk Satellite shows it under **About > System** in its remote admin and on the Overview. Install it from either place.
+
+The Dot downloads the release and checks its signature. Then it installs it into slot A and, once slot A boots, into slot B. It restarts twice and is offline for about a minute and a half each time. Kiosk Satellite and its settings stay.
+
+The Dot checks for a new release a minute after every boot. Kiosk Satellite asks it again twice a day. To check right away, click the **ROM version** under **About > System**. [Device commands](docs/device-commands.md#system-updates) covers the same from adb.
+
+If the Dot runs 2026.10.3 or an earlier release, install the new image by hand with the steps in [Installing](#installing). Skip `twrp wipe data`, which keeps Kiosk Satellite and its settings.
 
 ## Building
 

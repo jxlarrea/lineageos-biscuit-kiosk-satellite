@@ -1,75 +1,69 @@
 # Kiosk Satellite Edition
 
-A CM14.1 Biscuit build tuned for Kiosk Satellite running headless: a voice satellite, intercom and speaker for Home Assistant on a 512 MB Echo Dot Gen 2. Built on the `kiosk-satellite` branch of this repository.
+This image turns the Echo Dot (2nd Gen) into a voice satellite, intercom and speaker for Home Assistant, run by [Kiosk Satellite](https://github.com/jxlarrea/kiosk-satellite) with no screen. This page covers what it does differently from a standard LineageOS 14.1 build, the settings you can change over adb and what it leaves out.
 
-## Done
+## Kiosk Satellite
 
-### Audio and the light ring
+The Dot installs Kiosk Satellite on its first boot, as soon as it has a network connection. It gives it every permission it needs and makes it the device owner, so Kiosk Satellite updates itself without asking. The permissions are applied again on every boot.
 
-| Change | Where | Why |
-| --- | --- | --- |
-| Microphone preamp 40 to 72 (20 dB to 36 dB) | `scripts/extract-fireos6-blobs.sh` | Fire OS relies on Amazon's audio processor for the rest of the gain, which never starts on this build. Speech was about 20 dB too quiet for calls. |
-| Speaker amplifier switched with the codec | `patches/full/031` | Ported from meiser79's LineageOS 18.1 tree: the amplifier comes on after the first write and goes off before standby, so the first playback after boot no longer crackles. |
-| `FRAME` no longer blanks the ring first | `biscuit-ledd.cpp` | A client animating at 20 frames a second strobed. |
-| The volume overlay restores the last client frame | `biscuit-ledd.cpp` | The ring used to go dark after the overlay until the client repainted. |
-| Speaker removed from the microphone array | `patches/full/036`, `hardware/amazon/audio/mic_beam.c` | The codec delivers all seven microphones plus the speaker signal (channel 8, on the microphones' clock), but the Fire OS HAL hands Android microphone 0 alone. At 90% volume the speaker reached the microphones about 20 dB above a voice, much of it distortion no echo canceller can model, and the wake word failed from about 75% up. The wrapper now reads the array itself, learns per frequency how the speaker reaches each microphone from channel 8, and removes that pattern from microphone 0 while the speaker plays: 13 to 17 dB less music, about 1 dB less voice above 1.2 kHz. The wake word now works with music at 100%. In a quiet room the output is microphone 0 unchanged. `persist.biscuit.mic_beam 0` turns it off. |
-| Speaker high-pass filter and limiter, off by default | `patches/full/035` | Fire OS shaped the output for the small driver in Amazon's audio processor, which never starts on this build. `persist.biscuit.spk_hpf_hz` sets a high-pass cutoff and `persist.biscuit.spk_limiter 1` turns on a peak limiter. In listening tests with the microphone array removing the speaker, the wake word did slightly worse over loud music with them on, and the high frequencies sounded harsher, so both ship off. Before the array, the limiter made the wake word fail over music at 75% and up. |
-| TSL2540 light sensor fallback | `sensors_biscuit.c` | Backported from meiser79's CM14.1 fork for boards with a TSL2540 instead of a TSL2584. Untested here: this unit has a TSL2584. |
+If you want to run the Dot without Kiosk Satellite, turn the installer off:
 
-### Kiosk Satellite
+```sh
+adb shell setprop persist.biscuit.ks_install 0
+```
 
-| Change | Where | Why |
-| --- | --- | --- |
-| First-boot Kiosk Satellite installer | `rootdir/ks-install.sh` | Downloads the latest release's ABI split (the same file the in-app updater picks), installs it, starts it, and applies every grant and device owner. Grants are reapplied on every boot. `setprop persist.biscuit.ks_install 0` turns it off. |
-| Action button broadcast from `PhoneWindowManager` | `patches/full/030` | Kiosk Satellite no longer needs an accessibility service or a wake lock to hear the button. `ro.biscuit.action_broadcast` advertises it. The key still reaches apps for older Kiosk Satellite versions. |
-| Amazon's wake word engine as a service | `biscuit-pryond.cpp`, `vendor/amazon/mt8163-common/biscuit-pryon-files.txt`, `biscuit-davs-model-files.txt`, `pryon/locales.txt` | Kiosk Satellite can listen for Amazon's wake words with the engine the Dot shipped with. The build takes Pryon's 15 libraries, its TVM model library and the en-US Alexa model from the Fire OS 6.5.7.4 OTA. The models of Echo, Computer, Amazon and Ziggy and of 16 more locales come from Amazon's DAVS, which hands them only to an Echo registered to an account: 29 sets, 152 MB, fetched once from a Dot running Fire OS and checked against the manifest. `locales.txt` names the sets each locale listens with, so locales that DAVS gave the same model share one copy. They load in the image's Pryon and use 29 MB (the multi-stage sets) to 35 MB (the TVM sets) while listening, against 17 MB for the firmware's Alexa. `biscuit-pryond` loads them only once an app connects to its `biscuit-pryon` socket, lists every model under `/system/etc/pryon` with its wake words and stop words, and runs the audio the app sends through them. It answers with every detection and near miss, with its score, threshold and where the word started and ended. On a Dot it accepted 10 "Alexa"s out of 10 at 0.927 to 0.983 against a 0.923 threshold and fired on nothing else. It uses about 15 MB of memory and 28% of one core while listening, against 12% for all of Kiosk Satellite with vsWakeWord. Amazon's model hears "stop" only right after "Alexa", and a plain "stop" scored 0.20 to 0.41 on the Dot against its 0.55. So the build changes two of its files: STOP also counts without "Alexa" first and is accepted from 0.18. Kiosk Satellite acts on it only while a timer rings or a reply plays. An accept comes about 1.2 seconds sooner than a near miss, which Pryon reports only once its window closes. `ro.biscuit.pryon` advertises it. |
-| Volume buttons claimable by an app | `patches/full/037`, `BiscuitService.java` | Kiosk Satellite can send the volume buttons to the Music Assistant group the Dot plays in or to a player it follows. An app claims them through BiscuitService's `claimVolumeButtons` with a token. While the claim holds, each press goes to that app as a `com.amazon.biscuit.service.VOLUME_BUTTON` broadcast instead of changing the volume. The claim ends when the app gives it back or dies. `biscuit_service volume up` and `down` still change the volume. `ro.biscuit.volume_claim` advertises it. |
-| System updates | `SystemUpdate.java`, `ota/twrp-update.sh`, `scripts/sign-release.sh` | The Dot finds, downloads and installs new releases itself, so Kiosk Satellite can offer them as an update in Home Assistant. BiscuitService checks the GitHub releases, downloads the zip to `/cache` and checks GitHub's checksum and a SHA256withRSA signature made with the release key. Then it writes an openrecoveryscript and reboots into TWRP. TWRP's own install command stops the script when an install fails and leaves the Dot waiting in TWRP, so `twrp-update.sh` runs the zip's updater itself and always reboots. Slot A gets the release first. Slot B gets it two minutes after Android boots from slot A. Slot A stays active. If slot A fails after its system was written, slot B becomes active, since `boot_a` is written last and still matches it. BiscuitService's `systemUpdateStatus`, `checkSystemUpdate` and `installSystemUpdate` serve Kiosk Satellite. Only the device owner may install. `ro.biscuit.ota` advertises it and `ro.biscuit.release` carries the installed release. |
+## Voice
 
-### Idle CPU and logging
+- **Wake words over loud music.** The Dot has seven microphones. The image uses all of them to remove the speaker's own sound from what Kiosk Satellite hears, so the wake word works with music at full volume. In a quiet room nothing changes.
+- **A louder microphone.** The microphone gain is 16 dB higher than on Fire OS's drivers alone, so voices and intercom calls come through at a normal level.
+- **Amazon's wake words.** The image includes the wake word engine the Dot shipped with, with models for Alexa, Echo, Computer, Amazon and Ziggy in 17 languages. Choose **Amazon** as the wake word engine in Kiosk Satellite. It runs on the Dot and sends nothing to Amazon. A plain "stop" also stops a ringing timer or a reply.
 
-| Change | Where | Why |
-| --- | --- | --- |
-| SurfaceFlinger no longer asks for a framebuffer buffer | `patches/full/032` | There is no framebuffer device, so every composition failed and was retried. SurfaceFlinger used about 5% of a core and logged about 110 lines a second. |
-| Fake display at 1 fps instead of 60 | `patches/full/020` | Fewer compositions on a display nothing reads. |
-| No boot animation | `device.mk` | It crashed dividing by zero on the 1x1 display. Boot completes in under a minute without it. |
-| Kernel command line without `initcall_debug` and with `loglevel=4` | `patches/kernel/020` | Less kernel logging. |
-| All four cores kept online | `init.device.rc` | MediaTek's hotplug daemon parked and unparked cores every second or two at idle. Kiosk Satellite counted the parked time as busy and showed 23 to 27% at idle instead of about 5%. With all four online the temperature stayed at 39 °C. |
-| perfprofd stopped after boot | `init.device.rc` | The profiling daemon only collects for Google's internal builds. |
-| The audio HAL's "asp Pipeline doesn't exist" error dropped in liblog | `patches/full/034` | The HAL calls Amazon's audio processor for every playback buffer, and the processor never starts on this build. It logged about 75 lines a second while anything played. |
+If you want to hear only the main microphone, for example to compare, turn the speaker removal off and restart the Dot:
 
-### Memory
+```sh
+adb shell setprop persist.biscuit.mic_beam 0
+```
 
-| Change | Where | Why |
-| --- | --- | --- |
-| zram with `lzo`, 256 MB | `patches/full/029` | The kernel lacks `zstd`, and 805 MB exceeded the RAM, so swap never started. |
-| No SystemUI, wallpaper service off | `empty-launcher/Android.mk`, `overlay/` | No status bar, navigation bar, keyguard or volume dialog to draw. Android treats the missing keyguard as a device without one. |
-| No LiveDisplay | `overlay/vendor/cmsdk` | It tunes a screen the device does not have, and it crashed the system at boot without SystemUI. |
-| No WebView | `empty-launcher/Android.mk` | Kiosk Satellite builds no UI on a headless device and its plugins are native code, so nothing draws a web page. Signing in to a captive Wi-Fi portal needs a screen anyway. 80 MB of `/system`. |
-| No telephony | `empty-launcher/Android.mk`, `overlay/vendor/cmsdk` | The phone process, Telecom and the telephony, contacts and blocked number providers. The device already had no radio (`ro.radio.noril`). Bluetooth can no longer offer the headset (HFP) profile, which needs a phone. |
-| Debloat | `empty-launcher/Android.mk` | Calendar, contacts, email, gallery, browsers, camera, music, keyboard, file manager, recorder, AudioFX, updater, weather, wallpapers, TTS, print, backup and test apps. StatementService stays: the package manager requires it. |
-| Dalvik heap preset for 512 MB | `device.mk` | Without it every app, system_server included, got ART's 16 MB default heap limit. |
-| `ro.config.low_ram=true`, at most 8 cached processes | `device.mk` | Fewer cached processes on a 512 MB device. |
+## Buttons and the light ring
 
-### Network
+- **The Action button** goes straight to Kiosk Satellite, even while the Dot sleeps.
+- **The volume buttons** can change the volume of the Music Assistant group the Dot plays in or of a player it follows. Turn this on with **Volume buttons control the player** under Media Player in Kiosk Satellite. `adb shell biscuit_service volume up` and `down` always change the Dot's own volume.
+- **The light ring** shows Kiosk Satellite's animations without flickering and goes back to them after the volume overlay.
 
-| Change | Where | Why |
-| --- | --- | --- |
-| Wi-Fi power save off | `patches/full/033` | With power save on, about one broadcast in five never arrived and the rest waited for the next DTIM beacon. Kiosks pick which one answers a wake word over broadcasts. `setprop persist.biscuit.wifi_powersave 1` turns it back on. |
+## Speaker
 
-## Measured on the Dot, idle with Kiosk Satellite connected
+The speaker no longer crackles on the first sound after a reboot.
 
-| Build | Used RAM | Free RAM | Idle CPU outside Kiosk Satellite |
-| --- | --- | --- | --- |
-| First debloat build | 322 MB | 173 MB | SurfaceFlinger 5%, logd 1% |
-| SurfaceFlinger fix | 322 MB | 173 MB | under 1% each |
-| Without SystemUI | 295 MB | 190 MB | under 1% each |
-| Without telephony | 279 MB | 207 MB | under 1% each |
-| Low RAM settings | 272 MB | 214 MB | under 1% each |
+The image has a high-pass filter and a limiter for the speaker, both off. Over loud music the wake word did slightly worse with them on and high notes sounded harsher. To try them, set a cutoff in Hz or turn on the limiter and restart the Dot:
 
-Kiosk Satellite itself used 1.7% of one core idle, measured per thread over a minute.
+```sh
+adb shell setprop persist.biscuit.spk_hpf_hz 150
+adb shell setprop persist.biscuit.spk_limiter 1
+```
 
-## Kept as upstream ships it
+## Over the Air (OTA) System updates
 
-- Network adb on port 5555 with no authentication: a headless device is maintained over the network.
+The Dot finds, downloads and installs new releases of this image itself. Kiosk Satellite shows them in its remote admin and as a **Firmware** update in Home Assistant. See [System updates](device-commands.md#system-updates).
 
+## Network
+
+- **Wi-Fi power saving is off.** With it on, some messages between kiosks got lost or delayed. Kiosks use those messages to decide which one answers a wake word. The Dot is always plugged in, so it costs little. To turn it back on, run this and restart the Dot:
+
+  ```sh
+  adb shell setprop persist.biscuit.wifi_powersave 1
+  ```
+
+- **adb works over Wi-Fi** on port 5555 without a password, so a Dot without a screen can always be reached. Anyone on your network can control the Dot this way, so keep it on a network you trust.
+
+## What the image leaves out
+
+A speaker with no screen does not need most of Android. Leaving it out frees memory and storage for Kiosk Satellite:
+
+- **Everything that draws on a screen:** the status bar, lock screen, wallpapers, boot animation and screen color tuning.
+- **The web browser engine (WebView).** You cannot sign in to a Wi-Fi network that needs a login page.
+- **Phone features.** The Dot cannot act as a Bluetooth headset for calls. It still works as a Bluetooth speaker.
+- **Apps a speaker does not use:** calendar, contacts, email, gallery, browsers, camera, music, keyboard, file manager, recorder, the LineageOS updater, weather, text to speech, printing and backup.
+
+## Memory and CPU
+
+With Kiosk Satellite connected and idle, about 270 MB of the Dot's memory is in use. 256 MB of compressed swap gives Android room for more. Android's own services stay under 1% of a core each. All four cores stay online, so the CPU readings in Kiosk Satellite are accurate. Amazon's wake word engine adds about 15 MB and a quarter of one core while it listens.

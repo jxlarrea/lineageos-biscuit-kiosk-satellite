@@ -185,7 +185,32 @@ Patch names are numbered because their order is part of the build contract. `scr
 | `026-biscuit-audio-route-wrapper.patch` | Adds the proven TLV320 baseline speaker route and controls the external amplifier around output activity. |
 | `027-biscuit-audio-route-forwarding.patch` | Correctly forwards full audio HAL/device/stream ABI calls to the real Fire OS objects while retaining only the route/amplifier interception. |
 | `028-biscuit-audio-gpio-mic-mute.patch` | Lets audioserver access the Amazon GPIO87 mute path and preserves/report the real hardware microphone-mute state. |
+| `029-biscuit-zram-lzo.patch` | Sizes zram at 256 MB with `lzo`. Swap never started upstream: the kernel lacks `zstd` and the 805 MB it asked for exceeded the RAM. |
+| `030-biscuit-action-button-broadcast.patch` | Broadcasts every Action button press and release from `PhoneWindowManager`, also while the device sleeps, so Kiosk Satellite needs no accessibility service. `ro.biscuit.action_broadcast` advertises it. The key still reaches apps for older Kiosk Satellite versions. |
+| `031-biscuit-speaker-amp-after-codec.patch` | Turns the speaker amplifier on after the first write and off before standby, ported from meiser79's LineageOS 18.1 tree, so the first playback after boot no longer crackles. |
+| `032-headless-framebuffer-surface-usage.patch` | Stops SurfaceFlinger from asking for a framebuffer buffer. With no framebuffer device every composition failed and was retried, at about 5% of a core and 110 log lines a second. |
+| `033-biscuit-wifi-power-save-off.patch` | Keeps Wi-Fi power save off unless `persist.biscuit.wifi_powersave` is 1. With it on, about one broadcast in five never arrived. |
+| `034-biscuit-drop-asp-pipeline-log.patch` | Drops the audio HAL's "asp Pipeline doesn't exist" error in `liblog`, logged about 75 times a second during playback because Amazon's audio processor never starts. |
+| `035-biscuit-speaker-highpass-limiter.patch` | Adds the speaker high-pass filter (`persist.biscuit.spk_hpf_hz`) and peak limiter (`persist.biscuit.spk_limiter`), both off. With them on the wake word did slightly worse over loud music. |
+| `036-biscuit-mic-array-speaker-null.patch` | Reads all seven microphones plus the speaker reference on channel 8, learns per frequency how the speaker reaches each microphone and removes it from microphone 0 while the speaker plays (`hardware/amazon/audio/mic_beam.c`). That is 13 to 17 dB less music and about 1 dB less voice above 1.2 kHz. `persist.biscuit.mic_beam 0` turns it off. |
+| `037-biscuit-volume-button-claim.patch` | Marks volume button presses from the hardware so BiscuitService can hand them to the app that claimed them through `claimVolumeButtons`, as `VOLUME_BUTTON` broadcasts. The claim ends with the app's token. `ro.biscuit.volume_claim` advertises it. |
 | `038-biscuit-adbd-tcp-reconnect.patch` | Gives each Wi-Fi ADB connection its own transport and probes idle ones with TCP keepalives, so a connection the host dropped without closing no longer blocks every later `adb connect`. |
+
+### Other image changes
+
+These live in the build scripts and in the device tree under `device/amazon/biscuit/` rather than in patches.
+
+| Where | What it does |
+| --- | --- |
+| `scripts/extract-fireos6-blobs.sh` | Raises the microphone preamp from 40 to 72 (20 dB to 36 dB). Fire OS left the rest of the gain to Amazon's audio processor, which never starts on this build. |
+| `rootdir/ks-install.sh` | Installs the latest Kiosk Satellite release's ABI split on first boot with every grant and device owner. The grants are applied again on every boot. `persist.biscuit.ks_install 0` turns it off. |
+| `biscuit-service/biscuit-ledd.cpp` | The light ring daemon. `FRAME` no longer blanks the ring first, which strobed at 20 frames a second. The volume overlay restores the last client frame. |
+| `biscuit-service/biscuit-pryond.cpp`, `pryon/locales.txt` | Amazon's wake word engine as a service on the `biscuit-pryon` socket. Pryon's libraries and the en-US Alexa model come from the Fire OS 6.5.7.4 OTA, 29 more model sets from Amazon's DAVS through amazon-davs-models. The build lets STOP count without "Alexa" first, accepted from 0.18. It uses about 15 MB and 28% of one core while listening. `ro.biscuit.pryon` advertises it. |
+| `biscuit-service/service/` | BiscuitService: the Wi-Fi, Bluetooth, volume and microphone commands of `biscuit_service`, the light ring binder, the volume button claim and system updates (`SystemUpdate.java`, `ota/`). `ro.biscuit.ota` advertises updates and `ro.biscuit.release` carries the release. |
+| `sensors/sensors_biscuit.c` | Falls back to a TSL2540 light sensor on boards without a TSL2584, backported from meiser79's CM14.1 fork. Untested, since this Dot has a TSL2584. |
+| `rootdir/init.device.rc` | Keeps all four cores online, since MediaTek's hotplug daemon parked and unparked them every second or two and Kiosk Satellite counted parked time as busy. Stops perfprofd after boot. |
+| `device.mk` | No boot animation, which crashed dividing by zero on the 1x1 display. The Dalvik heap settings for 512 MB devices, `ro.config.low_ram` and at most 8 cached processes. |
+| `empty-launcher/Android.mk`, `overlay/` | Leaves out SystemUI, the wallpaper service, LiveDisplay, WebView, telephony and the unused apps. StatementService stays because the package manager requires it. |
 
 ### Minimal-product patches (`patches/minimal/`)
 
