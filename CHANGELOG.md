@@ -2,6 +2,11 @@
 
 All notable changes to LineageOS for the Echo Dot (2nd Gen), Kiosk Satellite Edition are documented here. Images are published on the [releases page](https://github.com/jxlarrea/lineageos-biscuit-kiosk-satellite/releases).
 
+## Unreleased
+
+### Added
+- **Choosing the microphone.** Kiosk Satellite hears microphone 0. If that one is weak on your Dot, `adb shell setprop persist.biscuit.mic_beam_out` with a number from 0 to 6 picks another and the speaker removal keeps working. The Kiosk Satellite Edition page shows how to find a weak microphone with `biscuit_mic_test`.
+
 ## 2026.10.4 - 2026-10-23
 
 ### Added

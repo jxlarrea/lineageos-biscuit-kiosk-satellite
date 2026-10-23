@@ -24,6 +24,19 @@ If you want to hear only the main microphone, for example to compare, turn the s
 adb shell setprop persist.biscuit.mic_beam 0
 ```
 
+Kiosk Satellite hears microphone 0. If the Dot barely hears the wake word, one of its microphones may be weak. Stop Kiosk Satellite, since it holds the microphones while it listens, and print the level of each one over 4 seconds:
+
+```sh
+adb shell am force-stop me.jxl.kiosk_satellite
+adb shell biscuit_mic_test 4
+```
+
+Channels 0 to 6 are the microphones and should read within a few dB of each other. Channels 7 and 8 are the speaker and read 0 when nothing plays. If microphone 0 reads far below the rest, pick another microphone and restart the Dot. The speaker removal keeps working with any of them:
+
+```sh
+adb shell setprop persist.biscuit.mic_beam_out 6
+```
+
 ## Buttons and the light ring
 
 - **The Action button** goes straight to Kiosk Satellite, even while the Dot sleeps.

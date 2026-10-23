@@ -44,14 +44,16 @@
  };
  
  /*
-@@ -460,6 +464,185 @@
+@@ -460,6 +464,188 @@
      free(out);
  }
  
 +/*
 + * Input streams. The voice capture Android opens (16 kHz mono from the
 + * built-in microphones) reads the microphone array itself through mic_beam.c,
-+ * which removes the speaker from it. Every other capture, and this one when
++ * which removes the speaker from it. It hands Android microphone 0 unless
++ * persist.biscuit.mic_beam_out picks another (0 to 6), for a Dot whose
++ * microphone 0 is weak. Every other capture, and this one when
 + * persist.biscuit.mic_beam is 0 or the array cannot be opened, goes to the
 + * Fire OS HAL, which hands Android microphone 0 unprocessed.
 + */
@@ -182,7 +184,8 @@
 +                in->amazon_stream->common.standby(&in->amazon_stream->common);
 +                in->adev->vendor_capture_ready = true;
 +            }
-+            in->beam = mic_beam_open(in->adev->beam_model);
++            in->beam = mic_beam_open(in->adev->beam_model,
++                                     property_get_int32("persist.biscuit.mic_beam_out", 0));
 +            if (in->beam) {
 +                ALOGI("reading the microphone array: the speaker is removed while it plays");
 +            }
@@ -230,7 +233,7 @@
  static int adev_open_input_stream(struct audio_hw_device* dev,
                                    audio_io_handle_t handle,
                                    audio_devices_t devices,
-@@ -468,15 +651,71 @@
+@@ -468,15 +654,71 @@
                                    audio_input_flags_t flags,
                                    const char* address,
                                    audio_source_t source) {
@@ -307,7 +310,7 @@
  }
  
  static int adev_dump(const struct audio_hw_device* dev, int fd) {
-@@ -697,6 +936,7 @@
+@@ -697,6 +939,7 @@
          status = adev->amazon_device->common.close(
                  (struct hw_device_t*)adev->amazon_device);
      }
@@ -315,7 +318,7 @@
      free(adev);
      return status;
  }
-@@ -768,6 +1008,7 @@
+@@ -768,6 +1011,7 @@
      adev->device.common.module = (struct hw_module_t*)module;
      adev->device.common.close = adev_close;
      wrap_device_methods(adev);
@@ -325,7 +328,7 @@
  
 --- /dev/null
 +++ b/hardware/amazon/audio/mic_beam.c
-@@ -0,0 +1,381 @@
+@@ -0,0 +1,397 @@
 +/*
 + * SPDX-License-Identifier: Apache-2.0
 + *
@@ -339,12 +342,13 @@
 + * reaches each microphone from the codec's own copy of the speaker signal,
 + * channel 8 of the microphone PCM, which shares the microphones' clock. A
 + * voice is not in that signal, so talking over music cannot disturb what is
-+ * learned. The output is microphone 0, the one Amazon's HAL hands Android,
-+ * minus its projection onto the speaker's pattern.
++ * learned. The output is one microphone, microphone 0 (the one Amazon's HAL
++ * hands Android) unless the caller picks another, minus its projection onto
++ * the speaker's pattern.
 + *
 + * The removal fades in while the speaker plays and fades out after it stops,
-+ * so in a quiet room the output is microphone 0 unchanged: the removal also
-+ * takes some of a voice's low end with it.
++ * so in a quiet room the output is that microphone unchanged: the removal
++ * also takes some of a voice's low end with it.
 + */
 +
 +#define LOG_TAG "audio.biscuit_mic_beam"
@@ -367,7 +371,6 @@
 +#define BEAM_CHANNELS 9
 +#define BEAM_MICS 7
 +#define BEAM_REF_CHANNEL 8
-+#define BEAM_OUT_MIC 0
 +#define BEAM_N 512
 +#define BEAM_HOP 256
 +#define BEAM_BINS (BEAM_N / 2 + 1)
@@ -393,8 +396,11 @@
 +    float cross_im[BEAM_BINS][BEAM_MICS];
 +    int trained;
 +    int since_pattern;
-+    /* How the speaker reaches each microphone relative to microphone 0, and
-+     * one over its squared length; 0 where it is not known. */
++    /* The microphone the output comes from. */
++    int out_mic;
++    /* How the speaker reaches each microphone relative to the output
++     * microphone, and one over its squared length; 0 where it is not
++     * known. */
 +    float d_re[BEAM_BINS][BEAM_MICS];
 +    float d_im[BEAM_BINS][BEAM_MICS];
 +    float inv_dd[BEAM_BINS];
@@ -506,22 +512,23 @@
 +}
 +
 +static void update_pattern(struct mic_beam_model* model) {
++    const int out = model->out_mic;
 +    int k, c;
 +
 +    for (k = 0; k < BEAM_BINS; k++) {
-+        float c0r = model->cross_re[k][0];
-+        float c0i = model->cross_im[k][0];
-+        float n0 = c0r * c0r + c0i * c0i;
++        float cor = model->cross_re[k][out];
++        float coi = model->cross_im[k][out];
++        float no = cor * cor + coi * coi;
 +        float dd = 0.0f;
 +
 +        model->inv_dd[k] = 0.0f;
-+        if (!(n0 > 1e-24f)) continue;
++        if (!(no > 1e-24f)) continue;
 +        for (c = 0; c < BEAM_MICS; c++) {
-+            /* d = cross_c / cross_0 */
++            /* d = cross_c / cross_out */
 +            float cr = model->cross_re[k][c];
 +            float ci = model->cross_im[k][c];
-+            float dr = (cr * c0r + ci * c0i) / n0;
-+            float di = (ci * c0r - cr * c0i) / n0;
++            float dr = (cr * cor + ci * coi) / no;
++            float di = (ci * cor - cr * coi) / no;
 +            model->d_re[k][c] = dr;
 +            model->d_im[k][c] = di;
 +            dd += dr * dr + di * di;
@@ -591,17 +598,17 @@
 +            (target > beam->mix ? BEAM_MIX_ATTACK : BEAM_MIX_RELEASE);
 +
 +    if (beam->mix < 0.001f) {
-+        /* Microphone 0 as it is, through the same windows. */
++        /* The output microphone as it is, through the same windows. */
 +        for (n = 0; n < BEAM_N; n++) {
-+            frame[n] = beam->hist[BEAM_OUT_MIC][n] * window[n] * window[n];
++            frame[n] = beam->hist[model->out_mic][n] * window[n] * window[n];
 +        }
 +    } else {
 +        float* yr = beam->work_re;
 +        float* yi = beam->work_im;
 +
 +        for (k = 0; k < BEAM_BINS; k++) {
-+            float x0r = beam->re[BEAM_OUT_MIC][k];
-+            float x0i = beam->im[BEAM_OUT_MIC][k];
++            float x0r = beam->re[model->out_mic][k];
++            float x0i = beam->im[model->out_mic][k];
 +            float scale = beam->mix * model->inv_dd[k];
 +            float pr = 0.0f, pi = 0.0f;
 +
@@ -655,7 +662,7 @@
 +    free(model);
 +}
 +
-+struct mic_beam* mic_beam_open(struct mic_beam_model* model) {
++struct mic_beam* mic_beam_open(struct mic_beam_model* model, int out_mic) {
 +    struct pcm_config config = {
 +        .channels = BEAM_CHANNELS,
 +        .rate = BEAM_RATE,
@@ -676,6 +683,18 @@
 +        free(beam);
 +        return NULL;
 +    }
++    if (out_mic < 0 || out_mic >= BEAM_MICS) {
++        ALOGW("there is no microphone %d, using microphone 0", out_mic);
++        out_mic = 0;
++    }
++    /* What is learned does not depend on the output microphone, only the
++     * pattern measured against it, so a new pick keeps the training. The
++     * PCM is open, so no other session is updating the model. */
++    if (model->out_mic != out_mic) {
++        model->out_mic = out_mic;
++        update_pattern(model);
++    }
++    ALOGI("output microphone %d", out_mic);
 +    beam->model = model;
 +    beam->out_pos = BEAM_HOP;
 +    return beam;
@@ -709,7 +728,7 @@
 +}
 --- /dev/null
 +++ b/hardware/amazon/audio/mic_beam.h
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,36 @@
 +/*
 + * SPDX-License-Identifier: Apache-2.0
 + */
@@ -735,8 +754,9 @@
 +struct mic_beam_model* mic_beam_model_create(void);
 +void mic_beam_model_free(struct mic_beam_model* model);
 +
-+/* Opens the microphone PCM. NULL when it cannot, such as when it is busy. */
-+struct mic_beam* mic_beam_open(struct mic_beam_model* model);
++/* Opens the microphone PCM, with out_mic (0 to 6) as the microphone the
++ * output comes from. NULL when it cannot, such as when it is busy. */
++struct mic_beam* mic_beam_open(struct mic_beam_model* model, int out_mic);
 +
 +/* Fills out with frames of 16 kHz mono. Blocks like a PCM read. Returns
 + * frames or a negative errno. */
