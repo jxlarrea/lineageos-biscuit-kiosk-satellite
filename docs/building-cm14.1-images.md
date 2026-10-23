@@ -173,6 +173,7 @@ Patch names are numbered because their order is part of the build contract. `scr
 | `026-biscuit-audio-route-wrapper.patch` | Adds the proven TLV320 baseline speaker route and controls the external amplifier around output activity. |
 | `027-biscuit-audio-route-forwarding.patch` | Correctly forwards full audio HAL/device/stream ABI calls to the real Fire OS objects while retaining only the route/amplifier interception. |
 | `028-biscuit-audio-gpio-mic-mute.patch` | Lets audioserver access the Amazon GPIO87 mute path and preserves/report the real hardware microphone-mute state. |
+| `038-biscuit-adbd-tcp-reconnect.patch` | Gives each Wi-Fi ADB connection its own transport and probes idle ones with TCP keepalives, so a connection the host dropped without closing no longer blocks every later `adb connect`. |
 
 ### Minimal-product patches (`patches/minimal/`)
 
@@ -185,6 +186,7 @@ Patch names are numbered because their order is part of the build contract. `scr
 | `005-wpa-passphrase.patch` | Exposes CM14's existing `wpa_passphrase.c` as the reproducibly built `/system/bin/wpa_passphrase` utility. |
 | `006-sepolicy-exfat-ntfs-types.patch` | Defines the exFAT and NTFS file types otherwise supplied by CM common sepolicy, which minimal deliberately does not inherit. |
 | `007-framework-free-systemimage-trim.patch` | Filters framework/default/debug/recovery leftovers from the minimal system image while retaining its explicit runtime manifest. |
+| `008-adbd-tcp-reconnect.patch` | Gives each Wi-Fi ADB connection its own transport and probes idle ones with TCP keepalives, so a connection the host dropped without closing no longer blocks every later `adb connect`. |
 
 ## Static validation
 

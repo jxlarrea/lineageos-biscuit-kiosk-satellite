@@ -2,6 +2,11 @@
 
 All notable changes to LineageOS for the Echo Dot (2nd Gen), Kiosk Satellite Edition are documented here. Images are published on the [releases page](https://github.com/jxlarrea/lineageos-biscuit-kiosk-satellite/releases).
 
+## Unreleased
+
+### Fixed
+- **Wi-Fi ADB stopped answering after a while.** adbd gave every Wi-Fi connection the same name and ignored any new connection while an old one with that name was still open. If the computer went away without closing its connection, for example when its adb server restarted, `adb connect` said it was connected but the Dot showed as offline until it restarted. Each connection now gets its own name. adbd also closes connections that stop answering for about 90 seconds.
+
 ## 2026.10.3 - 2026-10-21
 
 ### Added

@@ -1,0 +1,37 @@
+--- a/system/core/adb/transport_local.cpp
++++ b/system/core/adb/transport_local.cpp
+@@ -144,6 +144,17 @@
+ 
+ #else // ADB_HOST
+ 
++// Biscuit: probe idle connections so adbd notices a host that went away
++// without closing its connection, such as a restarted adb server or a router
++// that dropped the idle flow. Without this the connection stays open forever.
++static void enable_tcp_keepalive(int fd) {
++    int on = 1, idle = 30, interval = 10, count = 6;
++    adb_setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
++    adb_setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
++    adb_setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
++    adb_setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
++}
++
+ static void server_socket_thread(void* arg) {
+     int serverfd, fd;
+     sockaddr_storage ss;
+@@ -173,7 +184,15 @@
+             D("server: new connection on fd %d", fd);
+             close_on_exec(fd);
+             disable_tcp_nagle(fd);
+-            register_socket_transport(fd, "host", port, 1);
++            enable_tcp_keepalive(fd);
++            // Biscuit: every connection used to register as "host", and adbd
++            // refuses a serial it already has. Once one connection went stale,
++            // every new one was accepted and then ignored. Give each its own
++            // serial like Oreo does and close the ones it refuses.
++            std::string serial = android::base::StringPrintf("host-%d", fd);
++            if (register_socket_transport(fd, serial.c_str(), port, 1) != 0) {
++                adb_close(fd);
++            }
+         }
+     }
+     D("transport: server_socket_thread() exiting");

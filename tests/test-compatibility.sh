@@ -16,8 +16,8 @@ WORKSPACE="${BISCUIT_WORKSPACE:-$ROOT/workspace}/cm14.1"
 [[ -d "$DEVICE" ]]
 [[ -d "$VENDOR" ]]
 [[ ! -e "$ROOT/cm14.1" ]]
-[[ "$(find "$FULL_PATCH_DIR" -maxdepth 1 -name '*.patch' | wc -l)" == 37 ]]
-[[ "$(find "$MINIMAL_PATCH_DIR" -maxdepth 1 -name '*.patch' | wc -l)" == 7 ]]
+[[ "$(find "$FULL_PATCH_DIR" -maxdepth 1 -name '*.patch' | wc -l)" == 38 ]]
+[[ "$(find "$MINIMAL_PATCH_DIR" -maxdepth 1 -name '*.patch' | wc -l)" == 8 ]]
 [[ "$(find "$KERNEL_PATCH_DIR" -maxdepth 1 -name '*.patch' | wc -l)" == 3 ]]
 
 printf '%s\n' "$FULL_PATCH_DIR"/*.patch | sed 's#.*/##' | diff -u - <(cat <<'EOF'
@@ -58,6 +58,7 @@ printf '%s\n' "$FULL_PATCH_DIR"/*.patch | sed 's#.*/##' | diff -u - <(cat <<'EOF
 035-biscuit-speaker-highpass-limiter.patch
 036-biscuit-mic-array-speaker-null.patch
 037-biscuit-volume-button-claim.patch
+038-biscuit-adbd-tcp-reconnect.patch
 EOF
 )
 
@@ -69,6 +70,7 @@ printf '%s\n' "$MINIMAL_PATCH_DIR"/*.patch | sed 's#.*/##' | diff -u - <(cat <<'
 005-wpa-passphrase.patch
 006-sepolicy-exfat-ntfs-types.patch
 007-framework-free-systemimage-trim.patch
+008-adbd-tcp-reconnect.patch
 EOF
 )
 
