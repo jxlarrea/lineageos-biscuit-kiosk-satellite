@@ -21,6 +21,7 @@ BY_NAME=${BISCUIT_OTA_BY_NAME:-/dev/block/platform/bootdevice/by-name}
 LINKS=${BISCUIT_OTA_LINKS:-/dev/block}
 TMP=${BISCUIT_OTA_TMP:-/tmp}
 UPDATER=$TMP/biscuit-ota-updater
+HAS_IMAGE=${BISCUIT_OTA_HAS_IMAGE:-has_image}
 
 exec >>"$DIR/twrp.log" 2>&1
 echo "=== $(date) slot $(cat "$DIR/slot" 2>/dev/null)"
@@ -41,6 +42,18 @@ use_slot() {
     "$BCB" set_active "$1" || return 1
     ln -sf "$(readlink -f "$BY_NAME/system_$1")" "$LINKS/current-system" &&
         ln -sf "$(readlink -f "$BY_NAME/boot_$1")" "$LINKS/current-boot"
+}
+
+# Whether slot $1's system partition holds an Echo Dot image. The BCB cannot
+# say: set_active clears the other slot's flags, so after an update slot B
+# reads as unbootable although it holds the release.
+has_image() {
+    mkdir -p "$TMP/biscuit-ota-system"
+    mount -t ext4 -o ro "$BY_NAME/system_$1" "$TMP/biscuit-ota-system" 2>/dev/null || return 1
+    grep -q '^ro.product.device=biscuit$' "$TMP/biscuit-ota-system/build.prop"
+    found=$?
+    umount "$TMP/biscuit-ota-system"
+    return $found
 }
 
 slot=$(cat "$DIR/slot" 2>/dev/null)
@@ -78,7 +91,7 @@ fi
 # leaves slot A as it was. The updater writes system before boot, so a
 # failure after that leaves boot_a as it was and slot B, if an earlier
 # install put the image there, holds a system that matches that kernel.
-if grep -q "Patching system image" "$OUT" && [ "$("$BCB" get b success)" = 1 ]; then
+if grep -q "Patching system image" "$OUT" && "$HAS_IMAGE" b; then
     use_slot b
     finish "failed a updater exited with $rc, slot B is active"
 fi

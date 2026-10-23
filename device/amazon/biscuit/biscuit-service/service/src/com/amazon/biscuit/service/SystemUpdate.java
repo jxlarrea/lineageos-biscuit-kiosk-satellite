@@ -55,6 +55,9 @@ final class SystemUpdate {
 
     private static final String RELEASES =
             "https://api.github.com/repos/jxlarrea/lineageos-biscuit-kiosk-satellite/releases?per_page=30";
+    // Another releases list in GitHub's format, to test an update before it
+    // is published. The release signature is checked all the same.
+    private static final String RELEASES_PROPERTY = "persist.biscuit.ota.releases";
     private static final File KEY = new File("/system/etc/biscuit-ota/release-key.pem");
     private static final File SCRIPT = new File("/system/etc/biscuit-ota/twrp-update.sh");
     private static final File DIR = new File("/cache/biscuit-ota");
@@ -311,7 +314,9 @@ final class SystemUpdate {
 
     private void fetchReleases() throws IOException, JSONException {
         int[] current = parseVersion(mCurrent);
-        JSONArray releases = new JSONArray(new String(get(RELEASES, 4 * 1024 * 1024), "UTF-8"));
+        String source = SystemProperties.get(RELEASES_PROPERTY, "");
+        if (source.isEmpty()) source = RELEASES;
+        JSONArray releases = new JSONArray(new String(get(source, 4 * 1024 * 1024), "UTF-8"));
         int[] newest = null;
         String latest = "", url = "", zipUrl = "", sigUrl = "", digest = "";
         long size = 0;

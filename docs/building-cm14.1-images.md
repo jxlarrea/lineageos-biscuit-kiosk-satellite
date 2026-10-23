@@ -141,6 +141,16 @@ scripts/sign-release.sh lineageos-biscuit-kiosk-satellite-<version>.zip
 
 The script signs with the private key in `~/.config/biscuit-ota/release-key.pem` or `BISCUIT_OTA_KEY` and checks the signature against `device/amazon/biscuit/biscuit-service/ota/release-key.pem`, the public key the image ships. Dots only install a release that has a valid `.sig`. A release without one has to be installed by hand. Keep a backup of the private key. Without it, no new release installs on its own until the Dots get an image with a new public key by hand.
 
+### Testing an update before publishing it
+
+A Dot can take its releases list from somewhere other than GitHub, such as a web server on your computer. Copy the GitHub API's answer for the repository's releases into a `releases.json`, point the asset URLs at the signed zip and its `.sig` on that server and set the property:
+
+```sh
+adb shell setprop persist.biscuit.ota.releases http://<computer>:<port>/releases.json
+```
+
+The Dot still checks the signature and the version in the zip. `adb shell setprop persist.biscuit.ota.releases ''` goes back to GitHub.
+
 ## Patch application model
 
 Patch names are numbered because their order is part of the build contract. `scripts/apply-patches.sh` applies every `*.patch` in the selected directory lexically, fuzz-free, and idempotently. Shared patches are intentionally duplicated between `patches/full/` and `patches/minimal/` because the selected profile must be independently reproducible.

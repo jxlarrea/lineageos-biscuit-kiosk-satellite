@@ -12,7 +12,8 @@ trap 'rm -rf "$TMPDIR"' EXIT
 sh -n "$OTA/twrp-update.sh"
 openssl pkey -pubin -in "$OTA/release-key.pem" -noout
 
-# A fake BCB: the active slot and whether slot B ever booted.
+# A fake BCB: the active slot. Like amzn_bcbtool, set_active clears the
+# other slot's flags, so they cannot tell whether slot B holds an image.
 cat >"$TMPDIR/bcbtool" <<'EOF'
 #!/bin/sh
 state=$(dirname "$0")/bcb
@@ -21,9 +22,8 @@ case "$1" in
     dump) echo "Active slot: $active" ;;
     get_active) echo "$active" ;;
     set_active) [ "$FAIL_SET_ACTIVE" = "$2" ] && exit 1
-        active=$2; [ "$2" = b ] && b_success=1
-        echo "active=$active b_success=$b_success" >"$state" ;;
-    get) echo "$b_success" ;;
+        active=$2
+        echo "active=$active" >"$state" ;;
 esac
 EOF
 # A fake updater that records the system partition it was pointed at.
@@ -38,14 +38,16 @@ esac
 EOF
 chmod +x "$TMPDIR/bcbtool" "$TMPDIR/updater"
 
-# run <slot> <updater mode> <active> <b_success>
+# run <slot> <updater mode> <active> <slot B holds an image: 1 or 0>
 run() {
     local case_dir="$TMPDIR/case"
     rm -rf "$case_dir"
     mkdir -p "$case_dir/cache" "$case_dir/by-name" "$case_dir/links" "$case_dir/tmp"
     for p in system_a system_b boot_a boot_b; do : >"$case_dir/by-name/$p"; done
     cp "$TMPDIR/bcbtool" "$case_dir/bcbtool"
-    echo "active=$3 b_success=$4" >"$case_dir/bcb"
+    echo "active=$3" >"$case_dir/bcb"
+    printf '#!/bin/sh\n[ "$1" = b ] && [ "%s" = 1 ]\n' "$4" >"$case_dir/has-image"
+    chmod +x "$case_dir/has-image"
     [ -n "${NO_ZIP:-}" ] || : >"$case_dir/cache/update.zip"
     [ -n "${NO_UPDATER:-}" ] || cp "$TMPDIR/updater" "$case_dir/cache/update-binary"
     [ -n "$1" ] && echo "$1" >"$case_dir/cache/slot"
@@ -53,6 +55,7 @@ run() {
         BISCUIT_OTA_DIR="$case_dir/cache" BISCUIT_OTA_BCB="$case_dir/bcbtool" \
         BISCUIT_OTA_BY_NAME="$case_dir/by-name" BISCUIT_OTA_LINKS="$case_dir/links" \
         BISCUIT_OTA_TMP="$case_dir/tmp" FAIL_SET_ACTIVE="${FAIL_SET_ACTIVE:-}" \
+        BISCUIT_OTA_HAS_IMAGE="$case_dir/has-image" \
         sh "$OTA/twrp-update.sh"
     RESULT=$(cat "$case_dir/cache/result")
     . "$case_dir/bcb"
